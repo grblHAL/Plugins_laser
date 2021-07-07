@@ -4,7 +4,7 @@
 
   Part of grblHAL
 
-  Copyright (c) 2020 Terje Io
+  Copyright (c) 2020-2021 Terje Io
 
   Grbl is free software: you can redistribute it and/or modify
   it under the terms of the GNU General Public License as published by
@@ -25,115 +25,113 @@
 
 #if LASER_COOLANT_ENABLE
 
-#ifndef LASER_COOLANT_ON_PORT
-#define LASER_COOLANT_ON_PORT 0
-#endif
-#ifndef LASER_COOLANT_OK_PORT
-#define LASER_COOLANT_OK_PORT 0
-#endif
-#ifndef LASER_COOLANT_TEMPERATURE_PORT
-#define LASER_COOLANT_TEMPERATURE_PORT 0
-#endif
-
 #include <string.h>
 #include <math.h>
 
+#ifdef ARDUINO
+#include "../grbl/hal.h"
+#include "../grbl/protocol.h"
+#include "../grbl/nvs_buffer.h"
+#else
 #include "grbl/hal.h"
 #include "grbl/protocol.h"
+#include "grbl/nvs_buffer.h"
+#endif
 
-static bool coolant_on = false, monitor_on = false, can_wait = false, can_monitor = false;
-static float max_temp = 30.0f;
-static user_mcode_ptrs_t user_mcode;
+typedef union {
+    uint8_t value;
+    struct {
+        uint8_t enable : 1;
+    };
+} coolant_options_t;
+
+typedef struct {
+    coolant_options_t options;
+    float min_temp;
+    float max_temp;
+    float on_delay;
+    float off_delay;
+} coolant_settings_t;
+
+static uint8_t coolant_ok_port, coolant_temp_port;
+static bool coolant_on = false, monitor_on = false, can_monitor = false;
 static on_report_options_ptr on_report_options;
 static on_realtime_report_ptr on_realtime_report;
 static on_program_completed_ptr on_program_completed;
-static driver_reset_ptr driver_reset;
+static coolant_ptrs_t on_coolant_changed;
+static nvs_address_t nvs_address;
+static coolant_settings_t coolant_settings;
 
-static user_mcode_t userMCodeCheck (user_mcode_t mcode)
+static void coolant_settings_restore (void);
+static void coolant_settings_load (void);
+static void coolant_settings_save (void);
+
+static const setting_detail_t plugin_settings[] = {
+    { Setting_CoolantOnDelay, Group_Coolant, "Laser coolant on delay", "seconds", Format_Decimal, "#0.0", "0.0", "30.0", Setting_NonCore, &coolant_settings.on_delay, NULL, NULL },
+    { Setting_CoolantOffDelay, Group_Coolant, "Laser coolant off delay", "minutes", Format_Decimal, "#0.0", "0.0", "30.0", Setting_NonCore, &coolant_settings.off_delay, NULL, NULL },
+//    { Setting_CoolantMinTemp, Group_Coolant, "Laser coolant min temp", "deg", Format_Decimal, "#0.0", "0.0", "30.0", Setting_NonCore, &coolant_settings.min_temp, NULL, NULL },
+    { Setting_CoolantMaxTemp, Group_Coolant, "Laser coolant max temp", "deg", Format_Decimal, "#0.0", "0.0", "30.0", Setting_NonCore, &coolant_settings.max_temp, NULL, NULL }
+};
+
+static setting_details_t details_all = {
+    .settings = plugin_settings,
+    .n_settings = sizeof(plugin_settings) / sizeof(setting_detail_t),
+    .save = coolant_settings_save,
+    .load = coolant_settings_load,
+    .restore = coolant_settings_restore,
+};
+
+static setting_details_t details = {
+    .settings = plugin_settings,
+    .n_settings = 2,
+    .save = coolant_settings_save,
+    .load = coolant_settings_load,
+    .restore = coolant_settings_restore,
+};
+
+static void coolant_settings_save (void)
 {
-    return mcode == Laser_Coolant
-                     ? mcode
-                     : (user_mcode.check ? user_mcode.check(mcode) : UserMCode_Ignore);
+    hal.nvs.memcpy_to_nvs(nvs_address, (uint8_t *)&coolant_settings, sizeof(coolant_settings_t), true);
 }
 
-static status_code_t userMCodeValidate (parser_block_t *gc_block, parameter_words_t *value_words)
+static setting_details_t *on_get_settings (void)
 {
-    status_code_t state = Status_GcodeValueWordMissing;
-
-    switch(gc_block->user_mcode) {
-
-        case Laser_Coolant:
-            if((*value_words).p && isnan(gc_block->values.p))
-                state = Status_BadNumberFormat;
-            if((*value_words).q && isnan(gc_block->values.q))
-                state = Status_BadNumberFormat;
-            if((*value_words).r && isnan(gc_block->values.r))
-                state = Status_BadNumberFormat;
-
-            if(state != Status_BadNumberFormat) {
-                if(((*value_words).q && gc_block->values.q > 0.0f && !can_wait) ||
-                   ((*value_words).r && gc_block->values.r > 0.0f && !can_monitor))
-                    state = Status_GcodeUnusedWords;
-                else if((*value_words).q) {
-                    state = Status_OK;
-                    gc_block->user_mcode_sync = true;
-                    if(!(*value_words).p)
-                        gc_block->values.p = 0.0f;
-                    if(!(*value_words).r)
-                        gc_block->values.r = NAN;
-                    (*value_words).p = (*value_words).q = (*value_words).r = Off;
-                }
-            }
-            break;
-
-        default:
-            state = Status_Unhandled;
-            break;
-    }
-
-    return state == Status_Unhandled && user_mcode.validate ? user_mcode.validate(gc_block, value_words) : state;
+    return can_monitor ? &details_all : &details;
 }
 
-static void userMCodeExecute (uint_fast16_t state, parser_block_t *gc_block)
+static void coolant_settings_restore (void)
 {
-    bool handled = true;
+    coolant_settings.min_temp = 0.0f;
+    coolant_settings.max_temp = 0.0f;
+    coolant_settings.on_delay = 0.0f;
+    coolant_settings.off_delay = 0.0f;
 
-    if (state != STATE_CHECK_MODE)
-      switch(gc_block->user_mcode) {
-
-        case Laser_Coolant:
-            // TODO: cannot switch off unless state == STATE_IDLE?
-            coolant_on = (uint16_t)gc_block->values.q != 0.0f;
-            hal.port.digital_out(LASER_COOLANT_ON_PORT, coolant_on);
-            if(coolant_on && can_wait && gc_block->values.p > 0.0f && hal.port.wait_on_input(true, LASER_COOLANT_OK_PORT, WaitMode_High, gc_block->values.p) != 1) {
-                coolant_on = false;
-                system_set_exec_alarm(Alarm_AbortCycle);
-            }
-            if(!isnan(gc_block->values.r)) {
-                max_temp = gc_block->values.r;
-                monitor_on = max_temp > 0.0f;
-            }
-            sys.report.coolant = On; // Set to report change immediately
-            break;
-
-        default:
-            handled = false;
-            break;
-    }
-
-    if(!handled && user_mcode.execute)
-        user_mcode.execute(state, gc_block);
+    coolant_settings_save();
 }
 
-static void driverReset (void)
+static void coolant_settings_load (void)
 {
-    driver_reset();
+    if(hal.nvs.memcpy_from_nvs((uint8_t *)&coolant_settings, nvs_address, sizeof(coolant_settings_t), true) != NVS_TransferResult_OK)
+        coolant_settings_restore();
+}
 
-    if(coolant_on) {
+// Start/stop tube coolant, wait for ok signal on start if delay is configured.
+static void coolantSetState (coolant_state_t mode)
+{
+    coolant_state_t prev = hal.coolant.get_state();
+
+    on_coolant_changed.set_state(mode);
+
+    if(mode.flood && !prev.flood &&
+        coolant_settings.on_delay > 0.0f &&
+         hal.port.wait_on_input(true, coolant_ok_port, WaitMode_High, coolant_settings.on_delay) != 1) {
+        mode.flood = Off;
         coolant_on = false;
-        hal.port.digital_out(LASER_COOLANT_ON_PORT, false);
-        sys.report.coolant = On; // Set to report change immediately
+        on_coolant_changed.set_state(mode);
+        system_set_exec_alarm(Alarm_AbortCycle);
     }
+
+    monitor_on = mode.flood && (coolant_settings.min_temp + coolant_settings.max_temp) > 0.0f;
 }
 
 static void onProgramCompleted (program_flow_t program_flow, bool check_mode)
@@ -141,7 +139,7 @@ static void onProgramCompleted (program_flow_t program_flow, bool check_mode)
     // Keep coolant and exhaust (flood) on? Setting? Delayed task?
     if(coolant_on && !check_mode) {
         coolant_on = false;
-        hal.port.digital_out(LASER_COOLANT_ON_PORT, false);
+//        hal.port.digital_out(LASER_COOLANT_ON_PORT, false);
         sys.report.coolant = On; // Set to report change immediately
     }
 
@@ -155,16 +153,11 @@ static void onRealtimeReport (stream_write_ptr stream_write, report_tracking_fla
 
     char buf[20] = "";
 
-    if(report.coolant) {
-        strcpy(buf, "|Ex:");
-        if(coolant_on)
-            strcat(buf, "C");
-    } else
-        *buf = '\0';
+    *buf = '\0';
 
     if(can_monitor) {
 
-        float coolant_temp = (float)hal.port.wait_on_input(false, LASER_COOLANT_TEMPERATURE_PORT, WaitMode_Immediate, 0.0f) / 10.0f;
+        float coolant_temp = (float)hal.port.wait_on_input(false, coolant_temp_port, WaitMode_Immediate, 0.0f) / 10.0f;
 
         if(coolant_temp_prev != coolant_temp || report.all) {
             strcat(buf, "|TCT:");
@@ -172,7 +165,7 @@ static void onRealtimeReport (stream_write_ptr stream_write, report_tracking_fla
             coolant_temp_prev = coolant_temp;
         }
 
-        if(monitor_on && coolant_temp > max_temp)
+        if(monitor_on && coolant_temp > coolant_settings.max_temp)
             system_set_exec_alarm(Alarm_AbortCycle);
     }
 
@@ -188,26 +181,31 @@ static void onReportOptions (bool newopt)
     on_report_options(newopt);
 
     if(!newopt)
-        hal.stream.write("[PLUGIN:LASER COOLANT v0.01]" ASCII_EOL);
+        hal.stream.write("[PLUGIN:Laser coolant v0.02]" ASCII_EOL);
 }
 
 static void warning_msg (uint_fast16_t state)
 {
-    report_message("Laser coolant handler failed to initialize!", Message_Warning);
+    report_message("Laser coolant plugin failed to initialize!", Message_Warning);
 }
 
 void laser_coolant_init (void)
 {
-    if(settings.mode == Mode_Laser && hal.port.num_digital_out > LASER_COOLANT_ON_PORT) {
+    if(hal.port.num_digital_in && hal.port.wait_on_input && (nvs_address = nvs_alloc(sizeof(coolant_settings_t)))) {
 
-        memcpy(&user_mcode, &hal.user_mcode, sizeof(user_mcode_ptrs_t));
+        coolant_ok_port = (-- hal.port.num_digital_in);
+        if((can_monitor = !!hal.port.num_analog_in))
+            coolant_temp_port = (-- hal.port.num_analog_in);
 
-        hal.user_mcode.check = userMCodeCheck;
-        hal.user_mcode.validate = userMCodeValidate;
-        hal.user_mcode.execute = userMCodeExecute;
+        if(hal.port.set_pin_description) {
+            hal.port.set_pin_description(true, false, coolant_ok_port, "Coolant ok");
+            if(can_monitor)
+                hal.port.set_pin_description(true, false, coolant_temp_port, "Coolant temperature");
+        }
 
-        driver_reset = hal.driver_reset;
-        hal.driver_reset = driverReset;
+        if(hal.port.register_interrupt_handler) {
+// add handler for flow stopped
+        }
 
         on_report_options = grbl.on_report_options;
         grbl.on_report_options = onReportOptions;
@@ -218,8 +216,12 @@ void laser_coolant_init (void)
         on_program_completed = grbl.on_program_completed;
         grbl.on_program_completed = onProgramCompleted;
 
-        can_wait = hal.port.wait_on_input && hal.port.num_digital_in > LASER_COOLANT_OK_PORT;
-        can_monitor = hal.port.wait_on_input && hal.port.num_analog_in > LASER_COOLANT_TEMPERATURE_PORT;
+        memcpy(&on_coolant_changed, &hal.coolant, sizeof(coolant_ptrs_t));
+        hal.coolant.set_state = coolantSetState;
+
+        details.on_get_settings = grbl.on_get_settings;
+        grbl.on_get_settings = on_get_settings;
+
     } else
         protocol_enqueue_rt_command(warning_msg);
 }

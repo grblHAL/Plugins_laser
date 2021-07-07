@@ -4,7 +4,7 @@
 
   Part of grblHAL
 
-  Copyright (c) 2020 Terje Io
+  Copyright (c) 2020-2021 Terje Io
 
   Grbl is free software: you can redistribute it and/or modify
   it under the terms of the GNU General Public License as published by
@@ -136,32 +136,32 @@ static user_mcode_t userMCodeCheck (user_mcode_t mcode)
                      : (user_mcode.check ? user_mcode.check(mcode) : UserMCode_Ignore);
 }
 
-static status_code_t userMCodeValidate (parser_block_t *gc_block, parameter_words_t *parameter_words)
+static status_code_t userMCodeValidate (parser_block_t *gc_block, parameter_words_t *deprecated)
 {
     status_code_t state = Status_GcodeValueWordMissing;
 
     switch(gc_block->user_mcode) {
 
         case LaserPPI_Enable:
-            if((*parameter_words).p) {
+            if(gc_block->words.p) {
                 state = isnan(gc_block->values.p) ? Status_BadNumberFormat : Status_OK;
-                (*parameter_words).p = Off;
+                gc_block->words.p = Off;
             }
             break;
 
         case LaserPPI_Rate:
-            if((*parameter_words).p) {
+            if(gc_block->words.p) {
                 state = isnan(gc_block->values.p) ? Status_BadNumberFormat : Status_OK;
                 gc_block->user_mcode_sync = true;
-                (*parameter_words).p = Off;
+                gc_block->words.p = Off;
             }
             break;
 
         case LaserPPI_PulseLength:
-            if((*parameter_words).p) {
+            if(gc_block->words.p) {
                 state = isnan(gc_block->values.p) ? Status_BadNumberFormat : Status_OK;
                 gc_block->user_mcode_sync = true;
-                (*parameter_words).p = Off;
+                gc_block->words.p = Off;
             }
             break;
 
@@ -170,7 +170,7 @@ static status_code_t userMCodeValidate (parser_block_t *gc_block, parameter_word
             break;
     }
 
-    return state == Status_Unhandled && user_mcode.validate ? user_mcode.validate(gc_block, parameter_words) : state;
+    return state == Status_Unhandled && user_mcode.validate ? user_mcode.validate(gc_block, deprecated) : state;
 }
 
 static void userMCodeExecute (uint_fast16_t state, parser_block_t *gc_block)
@@ -212,7 +212,7 @@ static void onReportOptions (bool newopt)
     on_report_options(newopt);
 
     if(!newopt)
-        hal.stream.write("[PLUGIN:LASER PPI v0.01]" ASCII_EOL);
+        hal.stream.write("[PLUGIN:Laser PPI v0.02]" ASCII_EOL);
 }
 
 void ppi_init (void)

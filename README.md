@@ -2,11 +2,9 @@
 
 Under development. Adds 3 M-codes for controlling PPI (Pulse Per Inch) mode for lasers.
 
-* `M112 P-` turns PPI mode on or off. The P-word specifies the mode. `0` = off, `1` = on.
-
-* `M113 P-` The P-word specifies the PPI value. Default value on startup is `600`.
-
-* `M114 P-` The P-word specifies the pulse length in microseconds. Default value on startup is `1500`.
+* `M126 P-` turns PPI mode on or off. The P-word specifies the mode. `0` = off, `1` = on.
+* `M127 P-` The P-word specifies the PPI value. Default value on startup is `600`.
+* `M128 P-` The P-word specifies the pulse length in microseconds. Default value on startup is `1500`.
 
 __NOTE:__ These M-codes are not standard and may change in a later release. 
 
@@ -20,24 +18,21 @@ Driver must support pulsing spindle on pin. Only for processors having a FPU tha
 
 ## Laser coolant
 
-Under development. Adds one M-code for controlling \(tube\) coolant.
+Under development. Adds monitoring for \(tube\) coolant controlled by `M8`, configurable by settings.
 
-* `M115 P- <Q>- <R>-` turns coolant modes on or off.
+* `$378` - time in seconds after coolant is turned on before an alarm is raised if the coolant ok signal is not asserted.
+* `$379` - time in minutes after program end before coolant is turned off. \(WIP\)
+* `$380` - min coolant temperature allowed. \(WIP\)
+* `$381` - max coolant temperature allowed. \(WIP\)
+* `$382` - input value offset for temperature calculation. \(WIP\)
+* `$383` - input value gain factor for temperature calculation. \(WIP\)
 
-The P-word specifies coolant mode. `0` = off, `1` = on.
-If a flow detector is connected then the Q-word is a delay in seconds to wait before checking flow is ok.
-If a temperature sensor is connected then the R-word specifies the upper temperature limit before an alarm is generated, set to 0 to disable monitoring.
-
-__NOTE:__ This M-code is not standard and may change in a later release. 
-
-_M115 example:_
-
-`M115 P1 Q2 R30 (switch on coolant, wait for two seconds before verifying flow is ok and set monitoring threshold to 30 deg. Celsius)`
+WIP - Work In Progress.
 
 Dependencies:
 
-Driver must have at least one [ioports port](../../templates/ioports.c) available for turning coolant on/off.
-Additional ports are required for coolant ok and temperature input in order to enable use of the `Q` and `R` words.
+Driver must have at least one [ioports port](../../templates/ioports.c) input available for the coolant ok signal.
+An optional analog input port is required for coolant temperature monitoring.
 
 ---
-2020-10-18
+2021-06-29
