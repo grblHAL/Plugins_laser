@@ -73,9 +73,23 @@ static const setting_detail_t plugin_settings[] = {
     { Setting_CoolantMaxTemp, Group_Coolant, "Laser coolant max temp", "deg", Format_Decimal, "#0.0", "0.0", "30.0", Setting_NonCore, &coolant_settings.max_temp, NULL, NULL }
 };
 
+#ifndef NO_SETTINGS_DESCRIPTIONS
+
+static const setting_descr_t plugin_settings_descr[] = {
+    { Setting_CoolantOnDelay, "" },
+    { Setting_CoolantOffDelay, "" },
+    { Setting_CoolantMaxTemp, "" }
+};
+
+#endif
+
 static setting_details_t details_all = {
     .settings = plugin_settings,
     .n_settings = sizeof(plugin_settings) / sizeof(setting_detail_t),
+#ifndef NO_SETTINGS_DESCRIPTIONS
+    .descriptions = plugin_settings_descr,
+    .n_descriptions = sizeof(plugin_settings_descr) / sizeof(setting_descr_t),
+#endif
     .save = coolant_settings_save,
     .load = coolant_settings_load,
     .restore = coolant_settings_restore,
@@ -84,6 +98,10 @@ static setting_details_t details_all = {
 static setting_details_t details = {
     .settings = plugin_settings,
     .n_settings = 2,
+#ifndef NO_SETTINGS_DESCRIPTIONS
+    .descriptions = plugin_settings_descr,
+    .n_descriptions = 2,
+#endif
     .save = coolant_settings_save,
     .load = coolant_settings_load,
     .restore = coolant_settings_restore,
