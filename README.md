@@ -8,7 +8,7 @@ Under development. Adds 3 M-codes for controlling PPI (Pulse Per Inch) mode for 
 
 __NOTE:__ These M-codes are not standard and may change in a later release. 
 
-A description of what PPI is and how it works can be found [here](http://www.engraversnetwork.com/support/universal-lasers/laser-how-tos/dpi-vs-ppi-laser/).
+A description of what PPI is and how it works can be found [here](https://www.buildlog.net/blog/2011/12/getting-more-power-and-cutting-accuracy-out-of-your-home-built-laser-system/).
 
 I have a customized version of [ioSender](https://github.com/terjeio/Grbl-GCode-Sender) that I use for my CO2-laser, this has not yet been published but I may do so if this is of interest.
 
@@ -35,4 +35,4 @@ Driver must have at least one [ioports port](../../templates/ioports.c) input av
 An optional analog input port is required for coolant temperature monitoring.
 
 ---
-2021-06-29
+2021-08-25
