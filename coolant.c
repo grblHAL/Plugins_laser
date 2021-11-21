@@ -51,6 +51,8 @@ typedef struct {
     float max_temp;
     float on_delay;
     float off_delay;
+    uint8_t coolant_ok_port;
+    uint8_t coolant_temp_port;
 } coolant_settings_t;
 
 static uint8_t coolant_ok_port, coolant_temp_port;
@@ -61,92 +63,35 @@ static on_program_completed_ptr on_program_completed;
 static coolant_ptrs_t on_coolant_changed;
 static nvs_address_t nvs_address;
 static coolant_settings_t coolant_settings;
-
-static void coolant_settings_restore (void);
-static void coolant_settings_load (void);
-static void coolant_settings_save (void);
-
-static const setting_detail_t plugin_settings[] = {
-    { Setting_CoolantOnDelay, Group_Coolant, "Laser coolant on delay", "seconds", Format_Decimal, "#0.0", "0.0", "30.0", Setting_NonCore, &coolant_settings.on_delay, NULL, NULL },
-    { Setting_CoolantOffDelay, Group_Coolant, "Laser coolant off delay", "minutes", Format_Decimal, "#0.0", "0.0", "30.0", Setting_NonCore, &coolant_settings.off_delay, NULL, NULL },
-//    { Setting_CoolantMinTemp, Group_Coolant, "Laser coolant min temp", "deg", Format_Decimal, "#0.0", "0.0", "30.0", Setting_NonCore, &coolant_settings.min_temp, NULL, NULL },
-    { Setting_CoolantMaxTemp, Group_Coolant, "Laser coolant max temp", "deg", Format_Decimal, "#0.0", "0.0", "30.0", Setting_NonCore, &coolant_settings.max_temp, NULL, NULL }
-};
-
-#ifndef NO_SETTINGS_DESCRIPTIONS
-
-static const setting_descr_t plugin_settings_descr[] = {
-    { Setting_CoolantOnDelay, "" },
-    { Setting_CoolantOffDelay, "" },
-    { Setting_CoolantMaxTemp, "" }
-};
-
-#endif
-
-static setting_details_t details_all = {
-    .settings = plugin_settings,
-    .n_settings = sizeof(plugin_settings) / sizeof(setting_detail_t),
-#ifndef NO_SETTINGS_DESCRIPTIONS
-    .descriptions = plugin_settings_descr,
-    .n_descriptions = sizeof(plugin_settings_descr) / sizeof(setting_descr_t),
-#endif
-    .save = coolant_settings_save,
-    .load = coolant_settings_load,
-    .restore = coolant_settings_restore,
-};
-
-static setting_details_t details = {
-    .settings = plugin_settings,
-    .n_settings = 2,
-#ifndef NO_SETTINGS_DESCRIPTIONS
-    .descriptions = plugin_settings_descr,
-    .n_descriptions = 2,
-#endif
-    .save = coolant_settings_save,
-    .load = coolant_settings_load,
-    .restore = coolant_settings_restore,
-};
-
-static void coolant_settings_save (void)
-{
-    hal.nvs.memcpy_to_nvs(nvs_address, (uint8_t *)&coolant_settings, sizeof(coolant_settings_t), true);
-}
-
-static setting_details_t *on_get_settings (void)
-{
-    return can_monitor ? &details_all : &details;
-}
-
-static void coolant_settings_restore (void)
-{
-    coolant_settings.min_temp = 0.0f;
-    coolant_settings.max_temp = 0.0f;
-    coolant_settings.on_delay = 0.0f;
-    coolant_settings.off_delay = 0.0f;
-
-    coolant_settings_save();
-}
-
-static void coolant_settings_load (void)
-{
-    if(hal.nvs.memcpy_from_nvs((uint8_t *)&coolant_settings, nvs_address, sizeof(coolant_settings_t), true) != NVS_TransferResult_OK)
-        coolant_settings_restore();
-}
+static uint8_t n_ain, n_din;
+static char max_aport[4], max_dport[4];
 
 // Start/stop tube coolant, wait for ok signal on start if delay is configured.
 static void coolantSetState (coolant_state_t mode)
 {
+    static bool irq_checked = false;
+
     coolant_state_t prev = hal.coolant.get_state();
 
     on_coolant_changed.set_state(mode);
 
     if(mode.flood && !prev.flood &&
         coolant_settings.on_delay > 0.0f &&
-         hal.port.wait_on_input(true, coolant_ok_port, WaitMode_High, coolant_settings.on_delay) != 1) {
+         hal.port.wait_on_input(Port_Digital, coolant_ok_port, WaitMode_High, coolant_settings.on_delay) != 1) {
         mode.flood = Off;
         coolant_on = false;
         on_coolant_changed.set_state(mode);
         system_set_exec_alarm(Alarm_AbortCycle);
+    } else if(!irq_checked) {
+
+        irq_checked = true;
+
+        if(hal.port.get_pin_info) {
+            xbar_t *port = hal.port.get_pin_info(Port_Digital, Port_Input, coolant_ok_port);
+            if(port && (port->cap.irq_mode & IRQ_Mode_Falling)) {
+                // TODO: register interrupt handler for coolant lost...
+            }
+        }
     }
 
     monitor_on = mode.flood && (coolant_settings.min_temp + coolant_settings.max_temp) > 0.0f;
@@ -175,7 +120,7 @@ static void onRealtimeReport (stream_write_ptr stream_write, report_tracking_fla
 
     if(can_monitor) {
 
-        float coolant_temp = (float)hal.port.wait_on_input(false, coolant_temp_port, WaitMode_Immediate, 0.0f) / 10.0f;
+        float coolant_temp = (float)hal.port.wait_on_input(Port_Analog, coolant_temp_port, WaitMode_Immediate, 0.0f) / 10.0f;
 
         if(coolant_temp_prev != coolant_temp || report.all) {
             strcat(buf, "|TCT:");
@@ -194,7 +139,107 @@ static void onRealtimeReport (stream_write_ptr stream_write, report_tracking_fla
         on_realtime_report(stream_write, report);
 }
 
-static void onReportOptions (bool newopt)
+static bool is_setting_available (const setting_detail_t *setting)
+{
+    return (setting->id == Setting_CoolantMaxTemp || setting->id == Setting_CoolantTempPort) && n_ain > 0;
+}
+
+static const setting_detail_t plugin_settings[] = {
+    { Setting_CoolantOnDelay, Group_Coolant, "Laser coolant on delay", "seconds", Format_Decimal, "#0.0", "0.0", "30.0", Setting_NonCore, &coolant_settings.on_delay, NULL, NULL },
+    { Setting_CoolantOffDelay, Group_Coolant, "Laser coolant off delay", "minutes", Format_Decimal, "#0.0", "0.0", "30.0", Setting_NonCore, &coolant_settings.off_delay, NULL, NULL },
+//    { Setting_CoolantMinTemp, Group_Coolant, "Laser coolant min temp", "deg", Format_Decimal, "#0.0", "0.0", "30.0", Setting_NonCore, &coolant_settings.min_temp, NULL, NULL },
+    { Setting_CoolantMaxTemp, Group_Coolant, "Laser coolant max temp", "deg", Format_Decimal, "#0.0", "0.0", "30.0", Setting_NonCore, &coolant_settings.max_temp, NULL, is_setting_available },
+    { Setting_CoolantTempPort, Group_AuxPorts, "Coolant temperature port", NULL, Format_Int8, "#0", "0", max_aport, Setting_NonCore, &coolant_settings.coolant_temp_port, NULL, is_setting_available },
+    { Setting_CoolantOkPort, Group_AuxPorts, "Coolant ok port", NULL, Format_Int8, "#0", "0", max_dport, Setting_NonCore, &coolant_settings.coolant_ok_port, NULL, NULL }
+};
+
+#ifndef NO_SETTINGS_DESCRIPTIONS
+
+static const setting_descr_t plugin_settings_descr[] = {
+    { Setting_CoolantOnDelay, "" },
+    { Setting_CoolantOffDelay, "" },
+    { Setting_CoolantMaxTemp, "" },
+    { Setting_CoolantTempPort, "Aux port number to use for coolant temperature monitoring." SETTINGS_HARD_RESET_REQUIRED },
+    { Setting_CoolantOkPort, "Aux port number to use for coolant ok signal." SETTINGS_HARD_RESET_REQUIRED },
+};
+
+#endif
+
+static void coolant_settings_save (void)
+{
+    hal.nvs.memcpy_to_nvs(nvs_address, (uint8_t *)&coolant_settings, sizeof(coolant_settings_t), true);
+}
+
+static void coolant_settings_restore (void)
+{
+    coolant_settings.min_temp = 0.0f;
+    coolant_settings.max_temp = 0.0f;
+    coolant_settings.on_delay = 0.0f;
+    coolant_settings.off_delay = 0.0f;
+
+    if(ioport_can_claim_explicit()) {
+        coolant_settings.coolant_temp_port = n_ain ? n_ain - 1 : 0;
+        coolant_settings.coolant_ok_port= n_din - 1;
+    }
+
+    coolant_settings_save();
+}
+
+static void coolant_settings_load (void)
+{
+    bool ok = true;
+
+    if(hal.nvs.memcpy_from_nvs((uint8_t *)&coolant_settings, nvs_address, sizeof(coolant_settings_t), true) != NVS_TransferResult_OK)
+        coolant_settings_restore();
+
+    if(ioport_can_claim_explicit()) {
+
+        // Sanity checks
+        if(coolant_settings.coolant_temp_port > n_ain)
+            coolant_settings.coolant_temp_port = n_ain ? n_ain - 1 : 0;
+        if(coolant_settings.coolant_ok_port > n_din)
+            coolant_settings.coolant_ok_port = n_din - 1;
+
+        coolant_temp_port = coolant_settings.coolant_temp_port;
+        coolant_ok_port = coolant_settings.coolant_ok_port;
+
+        if(n_ain > 0)
+            ok = (can_monitor = ioport_claim(Port_Analog, Port_Input, &coolant_temp_port, "Coolant temperature"));
+
+        ok &= ioport_claim(Port_Digital, Port_Input, &coolant_ok_port, "Coolant ok");
+    }
+
+    if(ok) {
+
+        on_realtime_report = grbl.on_realtime_report;
+        grbl.on_realtime_report = onRealtimeReport;
+
+        on_program_completed = grbl.on_program_completed;
+        grbl.on_program_completed = onProgramCompleted;
+
+        memcpy(&on_coolant_changed, &hal.coolant, sizeof(coolant_ptrs_t));
+        hal.coolant.set_state = coolantSetState;
+    }
+}
+
+static setting_details_t details = {
+    .settings = plugin_settings,
+    .n_settings = sizeof(plugin_settings) / sizeof(setting_detail_t),
+#ifndef NO_SETTINGS_DESCRIPTIONS
+    .descriptions = plugin_settings_descr,
+    .n_descriptions = sizeof(plugin_settings_descr) / sizeof(setting_descr_t),
+#endif
+    .save = coolant_settings_save,
+    .load = coolant_settings_load,
+    .restore = coolant_settings_restore,
+};
+
+static setting_details_t *get_settings (void)
+{
+    return &details;
+}
+
+static void report_options (bool newopt)
 {
     on_report_options(newopt);
 
@@ -209,36 +254,42 @@ static void warning_msg (uint_fast16_t state)
 
 void laser_coolant_init (void)
 {
-    if(hal.port.num_digital_in && hal.port.wait_on_input && (nvs_address = nvs_alloc(sizeof(coolant_settings_t)))) {
+    bool ok;
 
-        coolant_ok_port = (-- hal.port.num_digital_in);
-        if((can_monitor = !!hal.port.num_analog_in))
-            coolant_temp_port = (-- hal.port.num_analog_in);
+    n_ain = ioports_available(Port_Analog, Port_Input);
+    n_din = ioports_available(Port_Digital, Port_Input);
+    ok = n_din >= 1;
 
-        if(hal.port.set_pin_description) {
-            hal.port.set_pin_description(true, false, coolant_ok_port, "Coolant ok");
-            if(can_monitor)
-                hal.port.set_pin_description(true, false, coolant_temp_port, "Coolant temperature");
-        }
+    if(ok) {
 
-        if(hal.port.register_interrupt_handler) {
-// add handler for flow stopped
-        }
+        if(!ioport_can_claim_explicit()) {
+
+            // Driver does not support explicit port claiming, claim the highest numbered ports instead.
+
+            if((ok = (nvs_address = nvs_alloc(sizeof(coolant_settings_t))))) {
+                if(hal.port.num_analog_in > 0) {
+                    coolant_temp_port = hal.port.num_analog_in - 1;
+                    can_monitor = ioport_claim(Port_Analog, Port_Input, &coolant_temp_port, "Coolant temperature");
+                }
+                coolant_ok_port = hal.port.num_digital_in - 1;
+                ioport_claim(Port_Digital, Port_Input, &coolant_ok_port, "Coolant ok");
+            }
+
+        } else
+            ok = (nvs_address = nvs_alloc(sizeof(coolant_settings_t)));
+    }
+
+    if(ok) {
+
+        if(n_ain)
+            strcpy(max_aport, uitoa(n_ain - 1));
+        strcpy(max_dport, uitoa(n_din - 1));
 
         on_report_options = grbl.on_report_options;
-        grbl.on_report_options = onReportOptions;
-
-        on_realtime_report = grbl.on_realtime_report;
-        grbl.on_realtime_report = onRealtimeReport;
-
-        on_program_completed = grbl.on_program_completed;
-        grbl.on_program_completed = onProgramCompleted;
-
-        memcpy(&on_coolant_changed, &hal.coolant, sizeof(coolant_ptrs_t));
-        hal.coolant.set_state = coolantSetState;
+        grbl.on_report_options = report_options;
 
         details.on_get_settings = grbl.on_get_settings;
-        grbl.on_get_settings = on_get_settings;
+        grbl.on_get_settings = get_settings;
 
     } else
         protocol_enqueue_rt_command(warning_msg);
