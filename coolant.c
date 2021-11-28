@@ -222,7 +222,7 @@ static void coolant_settings_load (void)
     }
 }
 
-static setting_details_t details = {
+static setting_details_t setting_details = {
     .settings = plugin_settings,
     .n_settings = sizeof(plugin_settings) / sizeof(setting_detail_t),
 #ifndef NO_SETTINGS_DESCRIPTIONS
@@ -234,17 +234,12 @@ static setting_details_t details = {
     .restore = coolant_settings_restore,
 };
 
-static setting_details_t *get_settings (void)
-{
-    return &details;
-}
-
 static void report_options (bool newopt)
 {
     on_report_options(newopt);
 
     if(!newopt)
-        hal.stream.write("[PLUGIN:Laser coolant v0.02]" ASCII_EOL);
+        hal.stream.write("[PLUGIN:Laser coolant v0.03]" ASCII_EOL);
 }
 
 static void warning_msg (uint_fast16_t state)
@@ -288,8 +283,7 @@ void laser_coolant_init (void)
         on_report_options = grbl.on_report_options;
         grbl.on_report_options = report_options;
 
-        details.on_get_settings = grbl.on_get_settings;
-        grbl.on_get_settings = get_settings;
+        settings_register(&setting_details);
 
     } else
         protocol_enqueue_rt_command(warning_msg);
