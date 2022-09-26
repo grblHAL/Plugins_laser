@@ -1,4 +1,6 @@
-## Laser PPI
+## Laser related plugins
+
+### Laser PPI
 
 Under development. Adds 3 M-codes for controlling PPI (Pulse Per Inch) mode for lasers.
 
@@ -16,7 +18,7 @@ Dependencies:
 
 Driver must support pulsing spindle on pin. Only for processors having a FPU that can be used in an interrupt context.
 
-## Laser coolant
+### Laser coolant
 
 Under development. Adds monitoring for \(tube\) coolant controlled by `M8`, configurable by settings.
 
@@ -34,5 +36,13 @@ Dependencies:
 Driver must have at least one [ioports port](../../templates/ioports.c) input available for the coolant ok signal.
 An optional analog input port is required for coolant temperature monitoring.
 
+### LightBurn clusters
+
+Under development, experimental.
+
+Add `#define LB_CLUSTERS_ENABLE 1` to your _my_machine.h_ to enable.  
+
+The plugin unpacks the clustered S command from the input stream and deliveres standard gcode to the parser.
+
 ---
-2021-08-25
+2022-09-25
