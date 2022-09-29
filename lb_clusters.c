@@ -389,7 +389,7 @@ static void cluster_report (void)
 static void report_options (bool newopt)
 {
     if(!newopt) {
-        hal.stream.write("[CLUSTERS:");
+        hal.stream.write("[CLUSTER:");
         hal.stream.write(uitoa(LB_CLUSTER_SIZE));
         hal.stream.write("]" ASCII_EOL);
         hal.stream.write("[PLUGIN:LightBurn clusters v0.03]" ASCII_EOL);
