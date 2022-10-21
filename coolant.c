@@ -4,7 +4,7 @@
 
   Part of grblHAL
 
-  Copyright (c) 2020-2021 Terje Io
+  Copyright (c) 2020-2022 Terje Io
 
   Grbl is free software: you can redistribute it and/or modify
   it under the terms of the GNU General Public License as published by
@@ -55,59 +55,84 @@ typedef struct {
     uint8_t coolant_temp_port;
 } coolant_settings_t;
 
+static uint32_t coolant_off, coolant_off_delay = 0;
 static uint8_t coolant_ok_port, coolant_temp_port;
 static bool coolant_on = false, monitor_on = false, can_monitor = false;
 static on_report_options_ptr on_report_options;
 static on_realtime_report_ptr on_realtime_report;
-static on_program_completed_ptr on_program_completed;
+static on_execute_realtime_ptr on_execute_realtime;
 static coolant_ptrs_t on_coolant_changed;
 static nvs_address_t nvs_address;
 static coolant_settings_t coolant_settings;
 static uint8_t n_ain, n_din;
 static char max_aport[4], max_dport[4];
 
+static void coolant_lost_handler (uint8_t port, bool state)
+{
+    if(coolant_on && !coolant_off_delay)
+        system_set_exec_alarm(Alarm_AbortCycle);
+}
+
 // Start/stop tube coolant, wait for ok signal on start if delay is configured.
 static void coolantSetState (coolant_state_t mode)
 {
     static bool irq_checked = false;
 
-    coolant_state_t prev = hal.coolant.get_state();
+    bool changed = mode.flood != hal.coolant.get_state().flood || (mode.flood && coolant_off_delay);
+
+    if(changed && !mode.flood) {
+
+        if(coolant_settings.off_delay > 0.0f && !sys.reset_pending) {
+            mode.flood = On;
+            coolant_off = hal.get_elapsed_ticks();
+            coolant_off_delay = (uint32_t)(coolant_settings.off_delay * 60.0f) * 1000;
+            on_coolant_changed.set_state(mode);
+            return;
+        }
+
+        coolant_on = false;
+    }
 
     on_coolant_changed.set_state(mode);
 
-    if(mode.flood && !prev.flood &&
-        coolant_settings.on_delay > 0.0f &&
-         hal.port.wait_on_input(Port_Digital, coolant_ok_port, WaitMode_High, coolant_settings.on_delay) != 1) {
-        mode.flood = Off;
-        coolant_on = false;
-        on_coolant_changed.set_state(mode);
-        system_set_exec_alarm(Alarm_AbortCycle);
-    } else if(!irq_checked) {
+    if(changed && mode.flood) {
+        coolant_off_delay = 0;
+        if(coolant_settings.on_delay > 0.0f && hal.port.wait_on_input(Port_Digital, coolant_ok_port, WaitMode_High, coolant_settings.on_delay) != 1) {
+            mode.flood = Off;
+            coolant_on = false;
+            on_coolant_changed.set_state(mode);
+            system_set_exec_alarm(Alarm_AbortCycle);
+        }
+        coolant_on = true;
+    }
+
+    if(!irq_checked) {
 
         irq_checked = true;
 
         if(hal.port.get_pin_info) {
             xbar_t *port = hal.port.get_pin_info(Port_Digital, Port_Input, coolant_ok_port);
-            if(port && (port->cap.irq_mode & IRQ_Mode_Falling)) {
-                // TODO: register interrupt handler for coolant lost...
-            }
+            if(port && (port->cap.irq_mode & IRQ_Mode_Falling))
+                hal.port.register_interrupt_handler(coolant_ok_port, IRQ_Mode_Falling, coolant_lost_handler);
         }
     }
 
     monitor_on = mode.flood && (coolant_settings.min_temp + coolant_settings.max_temp) > 0.0f;
 }
 
-static void onProgramCompleted (program_flow_t program_flow, bool check_mode)
+static void coolant_poll_realtime (sys_state_t state)
 {
-    // Keep coolant and exhaust (flood) on? Setting? Delayed task?
-    if(coolant_on && !check_mode) {
+    on_execute_realtime(state);
+
+    if(coolant_off_delay && hal.get_elapsed_ticks() - coolant_off > coolant_off_delay) {
+
+        coolant_state_t mode = hal.coolant.get_state();
+        mode.flood = Off;
+        on_coolant_changed.set_state(mode);
         coolant_on = false;
-//        hal.port.digital_out(LASER_COOLANT_ON_PORT, false);
+        coolant_off_delay = 0;
         sys.report.coolant = On; // Set to report change immediately
     }
-
-    if(on_program_completed)
-        on_program_completed(program_flow, check_mode);
 }
 
 static void onRealtimeReport (stream_write_ptr stream_write, report_tracking_flags_t report)
@@ -172,9 +197,9 @@ static void coolant_settings_save (void)
 
 static void coolant_settings_restore (void)
 {
-    coolant_settings.min_temp = 0.0f;
-    coolant_settings.max_temp = 0.0f;
-    coolant_settings.on_delay = 0.0f;
+    coolant_settings.min_temp =
+    coolant_settings.max_temp =
+    coolant_settings.on_delay =
     coolant_settings.off_delay = 0.0f;
 
     if(ioport_can_claim_explicit()) {
@@ -214,8 +239,8 @@ static void coolant_settings_load (void)
         on_realtime_report = grbl.on_realtime_report;
         grbl.on_realtime_report = onRealtimeReport;
 
-        on_program_completed = grbl.on_program_completed;
-        grbl.on_program_completed = onProgramCompleted;
+        on_execute_realtime = grbl.on_execute_realtime;
+        grbl.on_execute_realtime = coolant_poll_realtime;
 
         memcpy(&on_coolant_changed, &hal.coolant, sizeof(coolant_ptrs_t));
         hal.coolant.set_state = coolantSetState;
@@ -239,7 +264,7 @@ static void report_options (bool newopt)
     on_report_options(newopt);
 
     if(!newopt)
-        hal.stream.write("[PLUGIN:Laser coolant v0.03]" ASCII_EOL);
+        hal.stream.write("[PLUGIN:Laser coolant v0.04]" ASCII_EOL);
 }
 
 static void warning_msg (uint_fast16_t state)

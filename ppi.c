@@ -82,7 +82,7 @@ static void stepperPulseStartPPI (stepper_t *stepper)
     stepper_pulse_start(stepper);
 }
 
-void ppiUpdatePWM (uint_fast16_t pwm)
+static void ppiUpdatePWM (uint_fast16_t pwm)
 {
     if(!laser.on && pwm > 0)
         laser.ppi_pos = laser.next_pos = 0.0f;
@@ -92,7 +92,7 @@ void ppiUpdatePWM (uint_fast16_t pwm)
     spindle_update_pwm(pwm);
 }
 
-void ppiUpdateRPM (float rpm)
+static void ppiUpdateRPM (float rpm)
 {
     if(!laser.on && rpm > 0.0f)
         laser.ppi_pos = laser.next_pos = 0.0f;
@@ -102,7 +102,7 @@ void ppiUpdateRPM (float rpm)
     spindle_update_rpm(rpm);
 }
 
-bool enable_ppi (bool on)
+static bool enable_ppi (bool on)
 {
     if(!gc_laser_ppi_enable(on ? laser.ppi : 0, laser.pulse_length)) {
 
