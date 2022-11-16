@@ -50,7 +50,7 @@ static struct {
 } input = {0};
 
 static struct {
-    char block[20];
+    char block[24];
     char sval[LB_CLUSTER_SIZE][10];
     char *s;
     char *cmd;
@@ -72,7 +72,7 @@ static inline char *get_value (char *v, float scale)
 
     read_float(v, &cc, &val);
 
-    return ftoa(val / scale, 3);
+    return ftoa(val / scale, 7);
 }
 
 #if LB_SVALUE_SCALING
@@ -87,7 +87,7 @@ static inline char *get_s_value (char *v)
 
     s = ftoa(val * settings.spindle.rpm_max, 0);
 
-    *strchr(s, '.') = '\n';
+    *strchr(s, '.') = input.eol;
 
     return s;
 }
@@ -110,8 +110,15 @@ static inline void file_fill_buffer (void)
         while((c = file_read()) != SERIAL_NO_DATA) {
             *s++ = (char)c;
             input.length++;
-            if((char)c == '\n')
+            if((char)c == '\n' || (char)c == '\r') {
+                if(input.length == 1 && input.eol && input.eol != (char)c) {
+                    input.eol = '\0';
+                    input.s = s;
+                    input.length = 0;
+                }
+                input.eol = c;
                 break;
+            }
         }
 
         *s = '\0';
@@ -141,7 +148,7 @@ static inline void file_fill_buffer (void)
                     *s2++ = '\0';
                     strcpy(cluster.sval[cluster.count++], get_s_value(s3));
 #else
-                    *s2++ = '\n';
+                    *s2++ = input.eol;
                     c = *s2;
                     *s2 = '\0';
                     strcpy(cluster.sval[cluster.count++], s3);
@@ -158,7 +165,6 @@ static inline void file_fill_buffer (void)
 #if LB_SVALUE_SCALING
             strcpy(cluster.sval[cluster.count++], get_s_value(s3));
 #else
-            *s2++ = '\n';
             *s2 = '\0';
             strcpy(cluster.sval[cluster.count++], s3);
 #endif
@@ -267,7 +273,7 @@ static int16_t stream_fill_buffer (void)
                     *s2++ = '\0';
                     strcpy(cluster.sval[cluster.count++], get_s_value(s3));
 #else
-                    *s2++ = '\n';
+                    *s2++ = input.eol;
                     c = *s2;
                     *s2 = '\0';
                     strcpy(cluster.sval[cluster.count++], s3);
@@ -284,7 +290,6 @@ static int16_t stream_fill_buffer (void)
 #if LB_SVALUE_SCALING
             strcpy(cluster.sval[cluster.count++], get_s_value(s3));
 #else
-            *s2++ = '\n';
             *s2 = '\0';
             strcpy(cluster.sval[cluster.count++], s3);
 #endif
@@ -392,7 +397,7 @@ static void report_options (bool newopt)
         hal.stream.write("[CLUSTER:");
         hal.stream.write(uitoa(LB_CLUSTER_SIZE));
         hal.stream.write("]" ASCII_EOL);
-        hal.stream.write("[PLUGIN:LightBurn clusters v0.03]" ASCII_EOL);
+        hal.stream.write("[PLUGIN:LightBurn clusters v0.04]" ASCII_EOL);
     }
 
     on_report_options(newopt);
