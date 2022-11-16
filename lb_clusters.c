@@ -65,14 +65,14 @@ static status_message_ptr status_message = NULL;
 static on_report_options_ptr on_report_options;
 static on_reset_ptr on_reset;
 
-static inline char *get_value (char *v, float scale)
+static inline char *get_value (char *v, uint_fast16_t scale)
 {
     float val;
     uint_fast8_t cc = 0;
 
     read_float(v, &cc, &val);
 
-    return ftoa(val / scale, 7);
+    return ftoa(val / (float)scale, 8);
 }
 
 #if LB_SVALUE_SCALING
@@ -169,8 +169,11 @@ static inline void file_fill_buffer (void)
             strcpy(cluster.sval[cluster.count++], s3);
 #endif
             s = cluster.cmd + 3;
-            strcat(strcpy(s, get_value(s, (float)cluster.count)), "S");
+            strcpy(s, get_value(s, cluster.count));
             cluster.s = strchr(s, '\0');
+            while(*(cluster.s - 1) == '0')
+                *(--cluster.s) = '\0';
+            strcat(cluster.s++, "S");
         }
     }
 
@@ -294,9 +297,11 @@ static int16_t stream_fill_buffer (void)
             strcpy(cluster.sval[cluster.count++], s3);
 #endif
             s = cluster.cmd + 3;
-            strcat(strcpy(s, get_value(s, (float)cluster.count)), "S");
+            strcpy(s, get_value(s, cluster.count));
             cluster.s = strchr(s, '\0');
-
+            while(*(cluster.s - 1) == '0')
+                *(--cluster.s) = '\0';
+            strcat(cluster.s++, "S");
         } else
             s = NULL;
     }
