@@ -4,7 +4,7 @@
 
   Part of grblHAL
 
-  Copyright (c) 2020-2022 Terje Io
+  Copyright (c) 2020-2023 Terje Io
 
   Grbl is free software: you can redistribute it and/or modify
   it under the terms of the GNU General Public License as published by
@@ -50,7 +50,8 @@ static user_mcode_ptrs_t user_mcode;
 static on_report_options_ptr on_report_options;
 static void (*stepper_wake_up)(void);
 static void (*stepper_pulse_start)(stepper_t *stepper);
-static on_spindle_select_ptr on_spindle_select;
+static spindle_pulse_on_ptr pulse_on;
+static on_spindle_selected_ptr on_spindle_selected;
 static spindle_update_pwm_ptr spindle_update_pwm;
 static spindle_update_rpm_ptr spindle_update_rpm;
 
@@ -74,7 +75,7 @@ static void stepperPulseStartPPI (stepper_t *stepper)
             laser.ppi_pos += mm_per_step;
             if(laser.ppi_pos >= laser.next_pos) {
                 laser.next_pos += laser.ppi_distance;
-                hal.spindle.pulse_on(laser.pulse_length);
+                pulse_on(laser.pulse_length);
             }
         }
     }
@@ -208,21 +209,25 @@ static void userMCodeExecute (uint_fast16_t state, parser_block_t *gc_block)
         user_mcode.execute(state, gc_block);
 }
 
-static bool onSpindleSelect (spindle_id_t spindle_id)
+static void onSpindleSelected (spindle_ptrs_t *spindle)
 {
-    if((hal.driver_cap.laser_ppi_mode = sys.mode == Mode_Laser && hal.spindle.cap.laser && hal.spindle.pulse_on != NULL)) {
+    if((hal.driver_cap.laser_ppi_mode = sys.mode == Mode_Laser && spindle->cap.laser && spindle->pulse_on != NULL)) {
 
-        if(hal.spindle.update_pwm) {
-            spindle_update_pwm = hal.spindle.update_pwm;
-            hal.spindle.update_pwm = ppiUpdatePWM;
+        pulse_on = spindle->pulse_on;
+
+        if(spindle->update_pwm) {
+            spindle_update_pwm = spindle->update_pwm;
+            spindle->update_pwm = ppiUpdatePWM;
         }
-        if(hal.spindle.update_rpm) {
-            spindle_update_rpm = hal.spindle.update_rpm;
-            hal.spindle.update_rpm = ppiUpdateRPM;
+
+        if(spindle->update_rpm) {
+            spindle_update_rpm = spindle->update_rpm;
+            spindle->update_rpm = ppiUpdateRPM;
         }
     }
 
-    return on_spindle_select == NULL || on_spindle_select(spindle_id);
+    if(on_spindle_selected)
+        on_spindle_selected(spindle);
 }
 
 static void onReportOptions (bool newopt)
@@ -230,7 +235,7 @@ static void onReportOptions (bool newopt)
     on_report_options(newopt);
 
     if(!newopt)
-        hal.stream.write("[PLUGIN:Laser PPI v0.04]" ASCII_EOL);
+        hal.stream.write("[PLUGIN:Laser PPI v0.05]" ASCII_EOL);
 }
 
 void ppi_init (void)
@@ -241,8 +246,8 @@ void ppi_init (void)
     hal.user_mcode.validate = userMCodeValidate;
     hal.user_mcode.execute = userMCodeExecute;
 
-    on_spindle_select = grbl.on_spindle_select;
-    grbl.on_spindle_select = onSpindleSelect;
+    on_spindle_selected = grbl.on_spindle_selected;
+    grbl.on_spindle_selected = onSpindleSelected;
 
     on_report_options = grbl.on_report_options;
     grbl.on_report_options = onReportOptions;
