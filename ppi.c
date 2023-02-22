@@ -211,7 +211,7 @@ static void userMCodeExecute (uint_fast16_t state, parser_block_t *gc_block)
 
 static void onSpindleSelected (spindle_ptrs_t *spindle)
 {
-    if((hal.driver_cap.laser_ppi_mode = sys.mode == Mode_Laser && spindle->cap.laser && spindle->pulse_on != NULL)) {
+    if((hal.driver_cap.laser_ppi_mode = spindle->cap.laser && spindle->pulse_on != NULL)) {
 
         pulse_on = spindle->pulse_on;
 
