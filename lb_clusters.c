@@ -6,7 +6,7 @@
 
   Part of grblHAL
 
-  Copyright (c) 2022 Terje Io
+  Copyright (c) 2022-2023 Terje Io
 
   Grbl is free software: you can redistribute it and/or modify
   it under the terms of the GNU General Public License as published by
@@ -50,7 +50,8 @@ static struct {
 } input = {0};
 
 static struct {
-    char block[24];
+    char block[34];
+    char param[24];
     char sval[LB_CLUSTER_SIZE][10];
     char *s;
     char *cmd;
@@ -65,12 +66,11 @@ static status_message_ptr status_message = NULL;
 static on_report_options_ptr on_report_options;
 static on_reset_ptr on_reset;
 
-static inline char *get_value (char *v, uint_fast16_t scale)
+static inline char *get_value (char *v, uint_fast8_t *offset, uint_fast16_t scale)
 {
     float val;
-    uint_fast8_t cc = 0;
 
-    read_float(v, &cc, &val);
+    read_float(v, offset, &val);
 
     return ftoa(val / (float)scale, 8);
 }
@@ -126,6 +126,7 @@ static inline void file_fill_buffer (void)
         if(input.length > 5 && !strncasecmp(input.block, "G1", 2) && strchr(input.block, ':')) {
 
             char *s2 = input.block, *s3;
+            uint_fast8_t params = 0;
 
             s = cluster.block;
 
@@ -169,7 +170,15 @@ static inline void file_fill_buffer (void)
             strcpy(cluster.sval[cluster.count++], s3);
 #endif
             s = cluster.cmd + 3;
-            strcpy(s, get_value(s, cluster.count));
+            s2 = get_value(s, &params, cluster.count);
+            if(strchr(s, '\0') != s + params + 1) {
+                strcpy(cluster.param, s + params);
+                *strchr(cluster.param, 'S') = '\r';
+                *strchr(cluster.sval[0], '\r') = '\0';
+            }
+            else
+                *cluster.param = '\0';
+            strcpy(s, s2);
             cluster.s = strchr(s, '\0');
             while(*(cluster.s - 1) == '0')
                 *(--cluster.s) = '\0';
@@ -179,6 +188,10 @@ static inline void file_fill_buffer (void)
 
     if(cluster.count) {
         strcpy(cluster.s, cluster.sval[cluster.next++]);
+        if(*cluster.param) {
+            strcat(cluster.s, cluster.param);
+            *cluster.param = '\0';
+        }
 //        if(cluster.next == 2) !! oddly this slows down the parser
 //            cluster.cmd += 2;
         if(cluster.next == cluster.count)
@@ -254,6 +267,7 @@ static int16_t stream_fill_buffer (void)
         if(input.length > 5 && !strncasecmp(input.block, "G1", 2) && strchr(input.block, ':')) {
 
             char *s2 = input.block, *s3;
+            uint_fast8_t params = 0;
 
             s = cluster.block;
 
@@ -267,6 +281,7 @@ static int16_t stream_fill_buffer (void)
 
             cluster.s = s;
             cluster.cmd = cluster.block;
+            strcpy(cluster.param, cluster.block);
             cluster.count = cluster.next = 0;
 
             s3 = s2;
@@ -297,7 +312,15 @@ static int16_t stream_fill_buffer (void)
             strcpy(cluster.sval[cluster.count++], s3);
 #endif
             s = cluster.cmd + 3;
-            strcpy(s, get_value(s, cluster.count));
+            s2 = get_value(s, &params, cluster.count);
+            if(strchr(s, '\0') != s + params + 1) {
+                strcpy(cluster.param, s + params);
+                *strchr(cluster.param, 'S') = '\r';
+                *strchr(cluster.sval[0], '\r') = '\0';
+            }
+            else
+                *cluster.param = '\0';
+            strcpy(s, s2);
             cluster.s = strchr(s, '\0');
             while(*(cluster.s - 1) == '0')
                 *(--cluster.s) = '\0';
@@ -308,6 +331,10 @@ static int16_t stream_fill_buffer (void)
 
     if(cluster.count) {
         strcpy(cluster.s, cluster.sval[cluster.next++]);
+        if(*cluster.param) {
+            strcat(cluster.s, cluster.param);
+            *cluster.param = '\0';
+        }
 //        if(cluster.next == 2) !! oddly this slows down the parser
 //            cluster.cmd += 2;
         if(cluster.next == cluster.count) {
@@ -402,7 +429,7 @@ static void report_options (bool newopt)
         hal.stream.write("[CLUSTER:");
         hal.stream.write(uitoa(LB_CLUSTER_SIZE));
         hal.stream.write("]" ASCII_EOL);
-        hal.stream.write("[PLUGIN:LightBurn clusters v0.04]" ASCII_EOL);
+        hal.stream.write("[PLUGIN:LightBurn clusters v0.05]" ASCII_EOL);
     }
 
     on_report_options(newopt);
