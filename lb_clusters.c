@@ -173,8 +173,8 @@ static inline void file_fill_buffer (void)
             s2 = get_value(s, &params, cluster.count);
             if(strchr(s, '\0') != s + params + 1) {
                 strcpy(cluster.param, s + params);
-                *strchr(cluster.param, 'S') = '\r';
-                *strchr(cluster.sval[0], '\r') = '\0';
+                *strchr(cluster.param, 'S') = input.eol;
+                *strchr(cluster.sval[0], input.eol) = '\0';
             }
             else
                 *cluster.param = '\0';
@@ -315,8 +315,8 @@ static int16_t stream_fill_buffer (void)
             s2 = get_value(s, &params, cluster.count);
             if(strchr(s, '\0') != s + params + 1) {
                 strcpy(cluster.param, s + params);
-                *strchr(cluster.param, 'S') = '\r';
-                *strchr(cluster.sval[0], '\r') = '\0';
+                *strchr(cluster.param, 'S') = input.eol;
+                *strchr(cluster.sval[0], input.eol) = '\0';
             }
             else
                 *cluster.param = '\0';
@@ -429,7 +429,7 @@ static void report_options (bool newopt)
         hal.stream.write("[CLUSTER:");
         hal.stream.write(uitoa(LB_CLUSTER_SIZE));
         hal.stream.write("]" ASCII_EOL);
-        hal.stream.write("[PLUGIN:LightBurn clusters v0.05]" ASCII_EOL);
+        hal.stream.write("[PLUGIN:LightBurn clusters v0.06]" ASCII_EOL);
     }
 
     on_report_options(newopt);
