@@ -83,24 +83,24 @@ static void stepperPulseStartPPI (stepper_t *stepper)
     stepper_pulse_start(stepper);
 }
 
-static void ppiUpdatePWM (uint_fast16_t pwm)
+static void ppiUpdatePWM (spindle_ptrs_t *spindle, uint_fast16_t pwm)
 {
     if(!laser.on && pwm > 0)
         laser.ppi_pos = laser.next_pos = 0.0f;
 
     laser.on = pwm > 0;
 
-    spindle_update_pwm(pwm);
+    spindle_update_pwm(spindle, pwm);
 }
 
-static void ppiUpdateRPM (float rpm)
+static void ppiUpdateRPM (spindle_ptrs_t *spindle, float rpm)
 {
     if(!laser.on && rpm > 0.0f)
         laser.ppi_pos = laser.next_pos = 0.0f;
 
     laser.on = rpm > 0.0f;
 
-    spindle_update_rpm(rpm);
+    spindle_update_rpm(spindle, rpm);
 }
 
 static bool enable_ppi (bool on)
@@ -235,7 +235,7 @@ static void onReportOptions (bool newopt)
     on_report_options(newopt);
 
     if(!newopt)
-        hal.stream.write("[PLUGIN:Laser PPI v0.05]" ASCII_EOL);
+        hal.stream.write("[PLUGIN:Laser PPI v0.06]" ASCII_EOL);
 }
 
 void ppi_init (void)
