@@ -4,7 +4,7 @@
 
   Part of grblHAL
 
-  Copyright (c) 2020-2022 Terje Io
+  Copyright (c) 2020-2024 Terje Io
 
   Grbl is free software: you can redistribute it and/or modify
   it under the terms of the GNU General Public License as published by
@@ -264,12 +264,7 @@ static void report_options (bool newopt)
     on_report_options(newopt);
 
     if(!newopt)
-        hal.stream.write("[PLUGIN:Laser coolant v0.04]" ASCII_EOL);
-}
-
-static void warning_msg (uint_fast16_t state)
-{
-    report_message("Laser coolant plugin failed to initialize!", Message_Warning);
+        hal.stream.write("[PLUGIN:Laser coolant v0.05]" ASCII_EOL);
 }
 
 void laser_coolant_init (void)
@@ -311,7 +306,7 @@ void laser_coolant_init (void)
         settings_register(&setting_details);
 
     } else
-        protocol_enqueue_rt_command(warning_msg);
+        protocol_enqueue_foreground_task(report_warning, "Laser coolant plugin failed to initialize!");
 }
 
 #endif
