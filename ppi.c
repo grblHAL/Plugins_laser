@@ -91,6 +91,7 @@ static void ppiUpdatePWM (spindle_ptrs_t *spindle, uint_fast16_t pwm)
     laser.on = pwm > 0;
 
     spindle_update_pwm(spindle, pwm);
+    pulse_on(laser.pulse_length);
 }
 
 static void ppiUpdateRPM (spindle_ptrs_t *spindle, float rpm)
@@ -125,14 +126,14 @@ static bool enable_ppi (bool on)
     return on;
 }
 
-static user_mcode_t userMCodeCheck (user_mcode_t mcode)
+static user_mcode_type_t userMCodeCheck (user_mcode_t mcode)
 {
     return mcode == LaserPPI_Enable || mcode == LaserPPI_Rate || mcode == LaserPPI_PulseLength
-            ? mcode
-            : (user_mcode.check ? user_mcode.check(mcode) : UserMCode_Ignore);
+            ? UserMCode_Normal
+            : (user_mcode.check ? user_mcode.check(mcode) : UserMCode_Unsupported);
 }
 
-static status_code_t userMCodeValidate (parser_block_t *gc_block, parameter_words_t *deprecated)
+static status_code_t userMCodeValidate (parser_block_t *gc_block)
 {
     status_code_t state = Status_GcodeValueWordMissing;
 
@@ -142,7 +143,7 @@ static status_code_t userMCodeValidate (parser_block_t *gc_block, parameter_word
             if(!hal.driver_cap.laser_ppi_mode)
                 state = Status_GcodeUnsupportedCommand;
             else if(gc_block->words.p) {
-                state = isnan(gc_block->values.p) ? Status_BadNumberFormat : Status_OK;
+                state = Status_OK;
                 gc_block->words.p = Off;
             }
             break;
@@ -151,7 +152,7 @@ static status_code_t userMCodeValidate (parser_block_t *gc_block, parameter_word
             if(!hal.driver_cap.laser_ppi_mode)
                 state = Status_GcodeUnsupportedCommand;
             else if(gc_block->words.p) {
-                state = isnan(gc_block->values.p) ? Status_BadNumberFormat : Status_OK;
+                state = Status_OK;
                 gc_block->user_mcode_sync = true;
                 gc_block->words.p = Off;
             }
@@ -161,7 +162,7 @@ static status_code_t userMCodeValidate (parser_block_t *gc_block, parameter_word
             if(!hal.driver_cap.laser_ppi_mode)
                 state = Status_GcodeUnsupportedCommand;
             else if(gc_block->words.p) {
-                state = isnan(gc_block->values.p) ? Status_BadNumberFormat : Status_OK;
+                state = Status_OK;
                 gc_block->user_mcode_sync = true;
                 gc_block->words.p = Off;
             }
@@ -172,7 +173,7 @@ static status_code_t userMCodeValidate (parser_block_t *gc_block, parameter_word
             break;
     }
 
-    return state == Status_Unhandled && user_mcode.validate ? user_mcode.validate(gc_block, deprecated) : state;
+    return state == Status_Unhandled && user_mcode.validate ? user_mcode.validate(gc_block) : state;
 }
 
 static void userMCodeExecute (uint_fast16_t state, parser_block_t *gc_block)
@@ -235,16 +236,16 @@ static void onReportOptions (bool newopt)
     on_report_options(newopt);
 
     if(!newopt)
-        hal.stream.write("[PLUGIN:Laser PPI v0.06]" ASCII_EOL);
+        report_plugin("Laser PPI", "0.07");
 }
 
 void ppi_init (void)
 {
-    memcpy(&user_mcode, &hal.user_mcode, sizeof(user_mcode_ptrs_t));
+    memcpy(&user_mcode, &grbl.user_mcode, sizeof(user_mcode_ptrs_t));
 
-    hal.user_mcode.check = userMCodeCheck;
-    hal.user_mcode.validate = userMCodeValidate;
-    hal.user_mcode.execute = userMCodeExecute;
+    grbl.user_mcode.check = userMCodeCheck;
+    grbl.user_mcode.validate = userMCodeValidate;
+    grbl.user_mcode.execute = userMCodeExecute;
 
     on_spindle_selected = grbl.on_spindle_selected;
     grbl.on_spindle_selected = onSpindleSelected;
