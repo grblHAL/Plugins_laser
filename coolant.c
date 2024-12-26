@@ -52,7 +52,7 @@ typedef struct {
     float off_delay;
     uint8_t coolant_ok_port;
     uint8_t coolant_temp_port;
-} coolant_settings_t;
+} laser_coolant_settings_t;
 
 static uint8_t coolant_ok_port, coolant_temp_port;
 static bool coolant_on = false, monitor_on = false, can_monitor = false, coolant_off_pending = false;
@@ -60,7 +60,7 @@ static on_report_options_ptr on_report_options;
 static on_realtime_report_ptr on_realtime_report;
 static coolant_ptrs_t on_coolant_changed;
 static nvs_address_t nvs_address;
-static coolant_settings_t coolant_settings;
+static laser_coolant_settings_t coolant_settings;
 static uint8_t n_ain, n_din;
 static char max_aport[4], max_dport[4];
 
@@ -181,7 +181,7 @@ static const setting_descr_t plugin_settings_descr[] = {
 
 static void coolant_settings_save (void)
 {
-    hal.nvs.memcpy_to_nvs(nvs_address, (uint8_t *)&coolant_settings, sizeof(coolant_settings_t), true);
+    hal.nvs.memcpy_to_nvs(nvs_address, (uint8_t *)&coolant_settings, sizeof(laser_coolant_settings_t), true);
 }
 
 static void coolant_settings_restore (void)
@@ -203,7 +203,7 @@ static void coolant_settings_load (void)
 {
     bool ok = true;
 
-    if(hal.nvs.memcpy_from_nvs((uint8_t *)&coolant_settings, nvs_address, sizeof(coolant_settings_t), true) != NVS_TransferResult_OK)
+    if(hal.nvs.memcpy_from_nvs((uint8_t *)&coolant_settings, nvs_address, sizeof(laser_coolant_settings_t), true) != NVS_TransferResult_OK)
         coolant_settings_restore();
 
     if(ioport_can_claim_explicit()) {
@@ -233,28 +233,28 @@ static void coolant_settings_load (void)
     }
 }
 
-static setting_details_t setting_details = {
-    .settings = plugin_settings,
-    .n_settings = sizeof(plugin_settings) / sizeof(setting_detail_t),
-#ifndef NO_SETTINGS_DESCRIPTIONS
-    .descriptions = plugin_settings_descr,
-    .n_descriptions = sizeof(plugin_settings_descr) / sizeof(setting_descr_t),
-#endif
-    .save = coolant_settings_save,
-    .load = coolant_settings_load,
-    .restore = coolant_settings_restore,
-};
-
 static void report_options (bool newopt)
 {
     on_report_options(newopt);
 
     if(!newopt)
-        hal.stream.write("[PLUGIN:Laser coolant v0.06]" ASCII_EOL);
+        report_plugin("Laser coolant", "0.06");
 }
 
 void laser_coolant_init (void)
 {
+    static setting_details_t setting_details = {
+        .settings = plugin_settings,
+        .n_settings = sizeof(plugin_settings) / sizeof(setting_detail_t),
+    #ifndef NO_SETTINGS_DESCRIPTIONS
+        .descriptions = plugin_settings_descr,
+        .n_descriptions = sizeof(plugin_settings_descr) / sizeof(setting_descr_t),
+    #endif
+        .save = coolant_settings_save,
+        .load = coolant_settings_load,
+        .restore = coolant_settings_restore,
+    };
+
     bool ok;
 
     n_ain = ioports_available(Port_Analog, Port_Input);
@@ -267,7 +267,7 @@ void laser_coolant_init (void)
 
             // Driver does not support explicit port claiming, claim the highest numbered ports instead.
 
-            if((ok = (nvs_address = nvs_alloc(sizeof(coolant_settings_t))))) {
+            if((ok = (nvs_address = nvs_alloc(sizeof(laser_coolant_settings_t))))) {
                 if(hal.port.num_analog_in > 0) {
                     coolant_temp_port = hal.port.num_analog_in - 1;
                     can_monitor = ioport_claim(Port_Analog, Port_Input, &coolant_temp_port, "Coolant temperature");
@@ -277,7 +277,7 @@ void laser_coolant_init (void)
             }
 
         } else
-            ok = (nvs_address = nvs_alloc(sizeof(coolant_settings_t)));
+            ok = (nvs_address = nvs_alloc(sizeof(laser_coolant_settings_t)));
     }
 
     if(ok) {
