@@ -4,20 +4,20 @@
 
   Part of grblHAL
 
-  Copyright (c) 2020-2023 Terje Io
+  Copyright (c) 2020-2025 Terje Io
 
-  Grbl is free software: you can redistribute it and/or modify
+  grblHAL is free software: you can redistribute it and/or modify
   it under the terms of the GNU General Public License as published by
   the Free Software Foundation, either version 3 of the License, or
   (at your option) any later version.
 
-  Grbl is distributed in the hope that it will be useful,
+  grblHAL is distributed in the hope that it will be useful,
   but WITHOUT ANY WARRANTY; without even the implied warranty of
-  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
   GNU General Public License for more details.
 
   You should have received a copy of the GNU General Public License
-  along with Grbl.  If not, see <http://www.gnu.org/licenses/>.
+  along with grblHAL. If not, see <http://www.gnu.org/licenses/>.
 
 */
 
@@ -51,7 +51,9 @@ static on_report_options_ptr on_report_options;
 static void (*stepper_wake_up)(void);
 static void (*stepper_pulse_start)(stepper_t *stepper);
 static spindle_pulse_on_ptr pulse_on;
+static on_parser_init_ptr on_parser_init;
 static on_spindle_selected_ptr on_spindle_selected;
+static on_program_completed_ptr on_program_completed;
 static spindle_update_pwm_ptr spindle_update_pwm;
 static spindle_update_rpm_ptr spindle_update_rpm;
 
@@ -231,12 +233,29 @@ static void onSpindleSelected (spindle_ptrs_t *spindle)
         on_spindle_selected(spindle);
 }
 
+void onParserInit (parser_state_t *gc_state)
+{
+    enable_ppi(false);
+
+    if(on_parser_init)
+        on_parser_init(gc_state);
+}
+
+void onProgramCompleted (program_flow_t program_flow, bool check_mode)
+{
+    if(!check_mode)
+        enable_ppi(false);
+
+    if(on_program_completed)
+        on_program_completed(program_flow, check_mode);
+}
+
 static void onReportOptions (bool newopt)
 {
     on_report_options(newopt);
 
     if(!newopt)
-        report_plugin("Laser PPI", "0.07");
+        report_plugin("Laser PPI", "0.08");
 }
 
 void ppi_init (void)
@@ -252,6 +271,12 @@ void ppi_init (void)
 
     on_report_options = grbl.on_report_options;
     grbl.on_report_options = onReportOptions;
+
+    on_parser_init = grbl.on_parser_init;
+    grbl.on_parser_init = onParserInit;
+
+    on_program_completed = grbl.on_program_completed;
+    grbl.on_program_completed = onProgramCompleted;
 }
 
 #endif
