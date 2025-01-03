@@ -4,7 +4,7 @@
 
   Part of grblHAL
 
-  Copyright (c) 2020-2024 Terje Io
+  Copyright (c) 2020-2025 Terje Io
 
   grblHAL is free software: you can redistribute it and/or modify
   it under the terms of the GNU General Public License as published by
@@ -155,26 +155,26 @@ static void onRealtimeReport (stream_write_ptr stream_write, report_tracking_fla
 
 static bool is_setting_available (const setting_detail_t *setting)
 {
-    return (setting->id == Setting_CoolantMaxTemp || setting->id == Setting_CoolantTempPort) && n_ain > 0;
+    return (setting->id == Setting_LaserCoolantMaxTemp || setting->id == Setting_LaserCoolantTempPort) && n_ain > 0;
 }
 
 static const setting_detail_t plugin_settings[] = {
-    { Setting_CoolantOnDelay, Group_Coolant, "Laser coolant on delay", "seconds", Format_Decimal, "#0.0", "0.0", "30.0", Setting_NonCore, &coolant_settings.on_delay, NULL, NULL },
-    { Setting_CoolantOffDelay, Group_Coolant, "Laser coolant off delay", "minutes", Format_Decimal, "#0.0", "0.0", "30.0", Setting_NonCore, &coolant_settings.off_delay, NULL, NULL },
-//    { Setting_CoolantMinTemp, Group_Coolant, "Laser coolant min temp", "deg", Format_Decimal, "#0.0", "0.0", "30.0", Setting_NonCore, &coolant_settings.min_temp, NULL, NULL, false },
-    { Setting_CoolantMaxTemp, Group_Coolant, "Laser coolant max temp", "deg", Format_Decimal, "#0.0", "0.0", "30.0", Setting_NonCore, &coolant_settings.max_temp, NULL, is_setting_available },
-    { Setting_CoolantTempPort, Group_AuxPorts, "Coolant temperature port", NULL, Format_Int8, "#0", "0", max_aport, Setting_NonCore, &coolant_settings.coolant_temp_port, NULL, is_setting_available, { .reboot_required = On } },
-    { Setting_CoolantOkPort, Group_AuxPorts, "Coolant ok port", NULL, Format_Int8, "#0", "0", max_dport, Setting_NonCore, &coolant_settings.coolant_ok_port, NULL, NULL, { .reboot_required = On } }
+    { Setting_LaserCoolantOnDelay, Group_Coolant, "Laser coolant on delay", "seconds", Format_Decimal, "#0.0", "0.0", "30.0", Setting_NonCore, &coolant_settings.on_delay, NULL, NULL },
+    { Setting_LaserCoolantOffDelay, Group_Coolant, "Laser coolant off delay", "minutes", Format_Decimal, "#0.0", "0.0", "30.0", Setting_NonCore, &coolant_settings.off_delay, NULL, NULL },
+//    { Setting_LaserCoolantMinTemp, Group_Coolant, "Laser coolant min temp", "deg", Format_Decimal, "#0.0", "0.0", "30.0", Setting_NonCore, &coolant_settings.min_temp, NULL, NULL, false },
+    { Setting_LaserCoolantMaxTemp, Group_Coolant, "Laser coolant max temp", "deg", Format_Decimal, "#0.0", "0.0", "30.0", Setting_NonCore, &coolant_settings.max_temp, NULL, is_setting_available },
+    { Setting_LaserCoolantTempPort, Group_AuxPorts, "Coolant temperature port", NULL, Format_Int8, "#0", "0", max_aport, Setting_NonCore, &coolant_settings.coolant_temp_port, NULL, is_setting_available, { .reboot_required = On } },
+    { Setting_LaserCoolantOkPort, Group_AuxPorts, "Coolant ok port", NULL, Format_Int8, "#0", "0", max_dport, Setting_NonCore, &coolant_settings.coolant_ok_port, NULL, NULL, { .reboot_required = On } }
 };
 
 #ifndef NO_SETTINGS_DESCRIPTIONS
 
 static const setting_descr_t plugin_settings_descr[] = {
-    { Setting_CoolantOnDelay, "" },
-    { Setting_CoolantOffDelay, "" },
-    { Setting_CoolantMaxTemp, "" },
-    { Setting_CoolantTempPort, "Aux port number to use for coolant temperature monitoring." },
-    { Setting_CoolantOkPort, "Aux port number to use for coolant ok signal." },
+    { Setting_LaserCoolantOnDelay, "" },
+    { Setting_LaserCoolantOffDelay, "" },
+    { Setting_LaserCoolantMaxTemp, "" },
+    { Setting_LaserCoolantTempPort, "Aux port number to use for coolant temperature monitoring." },
+    { Setting_LaserCoolantOkPort, "Aux port number to use for coolant ok signal." },
 };
 
 #endif
