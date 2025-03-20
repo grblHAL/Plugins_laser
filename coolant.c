@@ -27,15 +27,9 @@
 #include <string.h>
 #include <math.h>
 
-#ifdef ARDUINO
-#include "../grbl/hal.h"
-#include "../grbl/protocol.h"
-#include "../grbl/nvs_buffer.h"
-#else
 #include "grbl/hal.h"
 #include "grbl/protocol.h"
 #include "grbl/nvs_buffer.h"
-#endif
 
 typedef union {
     uint8_t value;
