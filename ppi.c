@@ -50,7 +50,7 @@ static user_mcode_ptrs_t user_mcode;
 static on_report_options_ptr on_report_options;
 static void (*stepper_wake_up)(void);
 static void (*stepper_pulse_start)(stepper_t *stepper);
-static spindle_pulse_on_ptr pulse_on;
+static spindle_ptrs_t *ppi_spindle;
 static on_parser_init_ptr on_parser_init;
 static on_spindle_selected_ptr on_spindle_selected;
 static on_program_completed_ptr on_program_completed;
@@ -73,11 +73,11 @@ static void stepperPulseStartPPI (stepper_t *stepper)
         if(stepper->new_block)
             mm_per_step = 1.0f / stepper->exec_block->steps_per_mm;
 
-        if(stepper->step_outbits.mask) {
+        if(stepper->step_out.bits) {
             laser.ppi_pos += mm_per_step;
             if(laser.ppi_pos >= laser.next_pos) {
                 laser.next_pos += laser.ppi_distance;
-                pulse_on(laser.pulse_length);
+                ppi_spindle->pulse_on(ppi_spindle, laser.pulse_length);
             }
         }
     }
@@ -93,7 +93,9 @@ static void ppiUpdatePWM (spindle_ptrs_t *spindle, uint_fast16_t pwm)
     laser.on = pwm > 0;
 
     spindle_update_pwm(spindle, pwm);
-    pulse_on(laser.pulse_length);
+
+    if(stepper_wake_up)
+        spindle->pulse_on(spindle, laser.pulse_length);
 }
 
 static void ppiUpdateRPM (spindle_ptrs_t *spindle, float rpm)
@@ -216,7 +218,7 @@ static void onSpindleSelected (spindle_ptrs_t *spindle)
 {
     if((hal.driver_cap.laser_ppi_mode = spindle->cap.laser && spindle->pulse_on != NULL)) {
 
-        pulse_on = spindle->pulse_on;
+        ppi_spindle = spindle;
 
         if(spindle->update_pwm) {
             spindle_update_pwm = spindle->update_pwm;
@@ -227,13 +229,14 @@ static void onSpindleSelected (spindle_ptrs_t *spindle)
             spindle_update_rpm = spindle->update_rpm;
             spindle->update_rpm = ppiUpdateRPM;
         }
-    }
+    } else
+        ppi_spindle = NULL;
 
     if(on_spindle_selected)
         on_spindle_selected(spindle);
 }
 
-void onParserInit (parser_state_t *gc_state)
+static void onParserInit (parser_state_t *gc_state)
 {
     enable_ppi(false);
 
@@ -241,7 +244,7 @@ void onParserInit (parser_state_t *gc_state)
         on_parser_init(gc_state);
 }
 
-void onProgramCompleted (program_flow_t program_flow, bool check_mode)
+static void onProgramCompleted (program_flow_t program_flow, bool check_mode)
 {
     if(!check_mode)
         enable_ppi(false);
@@ -255,7 +258,7 @@ static void onReportOptions (bool newopt)
     on_report_options(newopt);
 
     if(!newopt)
-        report_plugin("Laser PPI", "0.08");
+        report_plugin("Laser PPI", "0.09");
 }
 
 void ppi_init (void)
