@@ -28,12 +28,14 @@
 #include "grbl/hal.h"
 
 static spindle_pwm_t *laser = NULL;
+static spindle_ptrs_t *active_spindle = NULL;
 
 static driver_reset_ptr driver_reset;
 static user_mcode_ptrs_t user_mcode;
 static on_report_options_ptr on_report_options;
 static on_spindle_selected_ptr on_spindle_selected;
 static on_program_completed_ptr on_program_completed;
+static on_settings_changed_ptr on_settings_changed;
 
 static user_mcode_type_t userMCodeCheck (user_mcode_t mcode)
 {
@@ -70,10 +72,20 @@ static void userMCodeExecute (uint_fast16_t state, parser_block_t *gc_block)
 
 static void onSpindleSelected (spindle_ptrs_t *spindle)
 {
-    laser = spindle->cap.laser && !!spindle->context.pwm && !!spindle->context.pwm->set_laser_overdrive ? spindle->context.pwm : NULL;
-
     if(on_spindle_selected)
         on_spindle_selected(spindle);
+
+    active_spindle = spindle;
+    laser = spindle->cap.laser && !!spindle->context.pwm && !!spindle->context.pwm->set_laser_overdrive ? spindle->context.pwm : NULL;
+}
+
+static void onSettingsChanged (settings_t *settings, settings_changed_flags_t changed)
+{
+    if(on_settings_changed)
+        on_settings_changed(settings, changed);
+
+    if(active_spindle)
+        laser = active_spindle->cap.laser && !!active_spindle->context.pwm && !!active_spindle->context.pwm->set_laser_overdrive ? active_spindle->context.pwm : NULL;
 }
 
 static void onProgramCompleted (program_flow_t program_flow, bool check_mode)
@@ -98,7 +110,7 @@ static void onReportOptions (bool newopt)
     on_report_options(newopt);
 
     if(!newopt)
-        report_plugin("CO2 laser overdrive", "0.01");
+        report_plugin("CO2 laser overdrive", "0.02");
 }
 
 void laser_ovd_init (void)
@@ -117,6 +129,9 @@ void laser_ovd_init (void)
 
     on_program_completed = grbl.on_program_completed;
     grbl.on_program_completed = onProgramCompleted;
+
+    on_settings_changed = grbl.on_settings_changed;
+    grbl.on_settings_changed = onSettingsChanged;
 
     driver_reset = hal.driver_reset;
     hal.driver_reset = driverReset;
