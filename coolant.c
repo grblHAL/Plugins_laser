@@ -97,7 +97,7 @@ static void coolantSetState (coolant_state_t mode)
     if(changed && mode.flood) {
         task_delete(coolant_flood_off, NULL);
         coolant_off_pending = false;
-        if(coolant_settings.on_delay > 0.0f && hal.port.wait_on_input(Port_Digital, coolant_ok_port, WaitMode_High, coolant_settings.on_delay) != 1) {
+        if(coolant_settings.on_delay > 0.0f && ioport_wait_on_input(Port_Digital, coolant_ok_port, WaitMode_High, coolant_settings.on_delay) != 1) {
             mode.flood = Off;
             coolant_on = false;
             on_coolant_changed.set_state(mode);
@@ -110,10 +110,10 @@ static void coolantSetState (coolant_state_t mode)
 
         irq_checked = true;
 
-        if(hal.port.get_pin_info) {
-            xbar_t *port = hal.port.get_pin_info(Port_Digital, Port_Input, coolant_ok_port);
+        if(ioports_can_do().io) {
+            xbar_t *port = ioport_get_info(Port_Digital, Port_Input, coolant_ok_port);
             if(port && (port->cap.irq_mode & IRQ_Mode_Falling))
-                hal.port.register_interrupt_handler(coolant_ok_port, IRQ_Mode_Falling, coolant_lost_handler);
+                ioport_enable_irq(coolant_ok_port, IRQ_Mode_Falling, coolant_lost_handler);
         }
     }
 
@@ -128,7 +128,7 @@ static void onRealtimeReport (stream_write_ptr stream_write, report_tracking_fla
 
     if(can_monitor) {
 
-        float coolant_temp = (float)hal.port.wait_on_input(Port_Analog, coolant_temp_port, WaitMode_Immediate, 0.0f) / 10.0f;
+        float coolant_temp = (float)ioport_wait_on_input(Port_Analog, coolant_temp_port, WaitMode_Immediate, 0.0f) / 10.0f;
 
         if(coolant_temp_prev != coolant_temp || report.all) {
             strcat(buf, "|TCT:");
@@ -269,7 +269,7 @@ static void onReportOptions (bool newopt)
     on_report_options(newopt);
 
     if(!newopt)
-        report_plugin("Laser coolant", "0.06");
+        report_plugin("Laser coolant", "0.07");
 }
 
 void laser_coolant_init (void)
