@@ -269,7 +269,7 @@ static void onReportOptions (bool newopt)
     on_report_options(newopt);
 
     if(!newopt)
-        report_plugin("Laser coolant", "0.07");
+        report_plugin("Laser coolant", "0.08");
 }
 
 void laser_coolant_init (void)
@@ -301,7 +301,7 @@ void laser_coolant_init (void)
         settings_register(&setting_details);
 
     } else
-        protocol_enqueue_foreground_task(report_warning, "Laser coolant plugin failed to initialize!");
+        task_run_on_startup(report_warning, "Laser coolant plugin failed to initialize!");
 }
 
 #endif // LASER_COOLANT_ENABLE
