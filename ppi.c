@@ -30,27 +30,26 @@
 
 #include "grbl/hal.h"
 
-typedef struct {
+static struct {
     uint_fast16_t ppi;
     float ppi_distance;
     float ppi_pos;
     float next_pos;
     uint_fast16_t pulse_length; // uS
     bool on;
-} laser_ppi_t;
-
-static laser_ppi_t laser = {
+} laser = {
     .ppi = 600.0f,
     .ppi_distance = 25.4f / 600.0f,
     .pulse_length = 1500,
     .on = false
 };
 
+static spindle_ptrs_t *ppi_spindle;
+
 static user_mcode_ptrs_t user_mcode;
 static on_report_options_ptr on_report_options;
-static void (*stepper_wake_up)(void);
-static void (*stepper_pulse_start)(stepper_t *stepper);
-static spindle_ptrs_t *ppi_spindle;
+static stepper_wake_up_ptr stepper_wake_up;
+static stepper_pulse_start_ptr stepper_pulse_start;
 static on_parser_init_ptr on_parser_init;
 static on_spindle_selected_ptr on_spindle_selected;
 static on_program_completed_ptr on_program_completed;

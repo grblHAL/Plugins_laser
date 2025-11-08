@@ -4,7 +4,7 @@
 
   Part of grblHAL
 
-  Copyright (c) 2020 Terje Io
+  Copyright (c) 2020-2025 Terje Io
 
   Grbl is free software: you can redistribute it and/or modify
   it under the terms of the GNU General Public License as published by
@@ -24,6 +24,14 @@
 #ifndef _LASER_PPI_H_
 #define _LASER_PPI_H_
 
+typedef void (*ppi_spindle_onoff_ptr)(spindle_ptrs_t *spindle);
+
+typedef struct {
+    spindle_ptrs_t *spindle;
+    ppi_spindle_onoff_ptr spindle_on;
+    ppi_spindle_onoff_ptr spindle_off;
+} laser_ppi_t;
+
 void ppi_init (void);
 
-#endif
+#endif // _LASER_PPI_H_

@@ -2,24 +2,22 @@
 
   lb_clusters.c - plugin for unpacking LightBurn cluster encoded engraving moves.
 
-  *** EXPERIMENTAL ***
-
   Part of grblHAL
 
-  Copyright (c) 2022-2023 Terje Io
+  Copyright (c) 2022-2025 Terje Io
 
-  Grbl is free software: you can redistribute it and/or modify
+  grblHAL is free software: you can redistribute it and/or modify
   it under the terms of the GNU General Public License as published by
   the Free Software Foundation, either version 3 of the License, or
   (at your option) any later version.
 
-  Grbl is distributed in the hope that it will be useful,
+  grblHAL is distributed in the hope that it will be useful,
   but WITHOUT ANY WARRANTY; without even the implied warranty of
-  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
   GNU General Public License for more details.
 
   You should have received a copy of the GNU General Public License
-  along with Grbl.  If not, see <http://www.gnu.org/licenses/>.
+  along with grblHAL. If not, see <http://www.gnu.org/licenses/>.
 
 */
 
@@ -201,9 +199,9 @@ static inline void file_fill_buffer (void)
     }
 }
 
-static int16_t file_decoder (void)
+static int32_t file_decoder (void)
 {
-    int16_t c;
+    int32_t c;
 
     if(input.length == 0)
         file_fill_buffer();
@@ -219,11 +217,11 @@ static int16_t file_decoder (void)
 
 // "Normal" stream decoder
 
-static int16_t stream_fill_buffer (void)
+static int32_t stream_fill_buffer (void)
 {
     static char *s = NULL;
 
-    int16_t c;
+    int32_t c;
 
     if(s == NULL || input.s == NULL) {
         input.s = s = input.block;
@@ -348,11 +346,11 @@ static int16_t stream_fill_buffer (void)
     return 0;
 }
 
-static int16_t stream_decoder (void)
+static int32_t stream_decoder (void)
 {
     static bool buffering = true;
 
-    int16_t c;
+    int32_t c;
 
     if(buffering) {
         while((c = stream_fill_buffer()) != 0) {
