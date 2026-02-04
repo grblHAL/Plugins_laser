@@ -4,7 +4,7 @@
 
   Part of grblHAL
 
-  Copyright (c) 2020-2025 Terje Io
+  Copyright (c) 2020-2026 Terje Io
 
   grblHAL is free software: you can redistribute it and/or modify
   it under the terms of the GNU General Public License as published by
@@ -70,7 +70,7 @@ static void coolant_flood_off (void *data)
     mode.flood = Off;
     on_coolant_changed.set_state(mode);
     coolant_off_pending = coolant_on = false;
-    sys.report.coolant = On; // Set to report change immediately
+    report_add_realtime(Report_Coolant); // Set to report change immediately
 }
 
 // Start/stop tube coolant, wait for ok signal on start if delay is configured.
@@ -251,7 +251,7 @@ static void onReportOptions (bool newopt)
     on_report_options(newopt);
 
     if(!newopt)
-        report_plugin("Laser coolant", "0.09");
+        report_plugin("Laser coolant", "0.10");
 }
 
 void laser_coolant_init (void)
