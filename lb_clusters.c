@@ -55,6 +55,8 @@ static struct {
     char *cmd;
     uint_fast16_t count;
     uint_fast16_t next;
+    float rpm;          // S word value, restored as the modal spindle speed when the cluster has been executed.
+    bool restore_rpm;
 } cluster;
 
 static stream_read_ptr file_read = NULL, stream_read = NULL;
@@ -91,6 +93,18 @@ static inline char *get_s_value (char *v)
 }
 
 #endif
+
+// Capture the S word (first) value of the cluster.
+// LightBurn keeps that value as the modal spindle speed, and omits the S word
+// from following blocks when it matches the power to output, so it has to be
+// restored as the modal speed when the cluster has been executed.
+static inline void cluster_get_rpm (void)
+{
+    uint_fast8_t cc = 0;
+
+    if(!read_float(cluster.sval[0], &cc, &cluster.rpm))
+        cluster.rpm = 0.0f;
+}
 
 // File stream decoder
 
@@ -181,6 +195,8 @@ static inline void file_fill_buffer (void)
             while(*(cluster.s - 1) == '0')
                 *(--cluster.s) = '\0';
             strcat(cluster.s++, "S");
+
+            cluster_get_rpm();
         }
     }
 
@@ -192,8 +208,10 @@ static inline void file_fill_buffer (void)
         }
 //        if(cluster.next == 2) !! oddly this slows down the parser
 //            cluster.cmd += 2;
-        if(cluster.next == cluster.count)
+        if(cluster.next == cluster.count) {
             cluster.count = 0;
+            cluster.restore_rpm = On;
+        }
         input.s = cluster.cmd;
         input.length = strlen(cluster.cmd);
     }
@@ -323,6 +341,8 @@ static int32_t stream_fill_buffer (void)
             while(*(cluster.s - 1) == '0')
                 *(--cluster.s) = '\0';
             strcat(cluster.s++, "S");
+
+            cluster_get_rpm();
         } else
             s = NULL;
     }
@@ -338,6 +358,7 @@ static int32_t stream_fill_buffer (void)
         if(cluster.next == cluster.count) {
             s = NULL;
             cluster.count = 0;
+            cluster.restore_rpm = On;
         }
         input.s = cluster.cmd;
         input.length = strlen(cluster.cmd);
@@ -377,13 +398,24 @@ static int32_t stream_decoder (void)
 static status_code_t cluster_status_message (status_code_t status_code)
 {
     if(status_code != Status_OK) {
+        cluster.restore_rpm = Off;
         status_message(status_code);
         if(cluster.next) {
             input.s = NULL;
             cluster.count = cluster.next = input.length = 0;
         }
-    } else if(cluster.count == 0)
-        status_message(status_code);
+    } else {
+        // The last block of a cluster has now been executed and leaves the value of the
+        // last cluster element as the modal spindle speed. LightBurn, however, keeps the
+        // S word (first) value as modal and omits the S word from following blocks when
+        // it matches the power to output - restore it to keep the two in sync.
+        if(cluster.restore_rpm) {
+            cluster.restore_rpm = Off;
+            gc_spindle_get(-1)->rpm = cluster.rpm;
+        }
+        if(cluster.count == 0)
+            status_message(status_code);
+    }
 
     return status_code;
 }
@@ -402,6 +434,7 @@ static void stream_changed (stream_type_t type)
     }
 
     cluster.count = cluster.next = input.length = 0;
+    cluster.restore_rpm = Off;
 }
 
 static void cluster_reset (void)
@@ -410,6 +443,7 @@ static void cluster_reset (void)
         on_reset();
 
     cluster.count = cluster.next = input.length = 0;
+    cluster.restore_rpm = Off;
 }
 
 static void cluster_report (void)
@@ -427,7 +461,7 @@ static void report_options (bool newopt)
         hal.stream.write("[CLUSTER:");
         hal.stream.write(uitoa(LB_CLUSTER_SIZE));
         hal.stream.write("]" ASCII_EOL);
-        hal.stream.write("[PLUGIN:LightBurn clusters v0.06]" ASCII_EOL);
+        hal.stream.write("[PLUGIN:LightBurn clusters v0.07]" ASCII_EOL);
     }
 
     on_report_options(newopt);
