@@ -49,14 +49,14 @@ static struct {
 } input = {0};
 
 static struct cluster {
-    char block[LINE_BUFFER_SIZE];
-    char param[LINE_BUFFER_SIZE + 40];
+    char block[LINE_BUFFER_SIZE + 40];
+    char param[LINE_BUFFER_SIZE];
     char *s;
     char *cmd;
     uint_fast8_t count;
     uint_fast8_t next;
     bool restore_s;
-    char sval[LB_CLUSTER_SIZE][11];
+    char sval[LB_CLUSTER_SIZE][STRLEN_COORDVALUE + 2];
 } cluster;
 
 static stream_read_ptr file_read = NULL, stream_read = NULL;
@@ -74,7 +74,7 @@ static inline char *get_value (char *v, uint_fast8_t *offset, uint_fast16_t scal
 
     val /= (float)scale;
 
-    return ftoa(val, val < 1.0f ? 10 : (val < 1000.0f ? 8 : 4));
+    return trim_float(ftoa(val, val < 1.0f ? 9 : (val < 1000.0f ? 8 : 4)));
 }
 
 #if LB_SVALUE_SCALING
@@ -91,7 +91,7 @@ static inline char *get_s_value (char *v)
 
     *strchr(s, '.') = input.eol;
 
-    return s;
+    return strlen(s) <= STRLEN_COORDVALUE ? s : "0";
 }
 
 #endif
@@ -120,27 +120,28 @@ static inline int_fast8_t parse_block (void)
 
         s2 = strtok(s2, ":");
         while(s2) {
+#if LB_SVALUE_SCALING
             if(cluster.count == LB_CLUSTER_SIZE)
                 return -1;
-#if LB_SVALUE_SCALING
             strcpy(cluster.sval[cluster.count++] + 1, get_s_value(s2));
 #else
+            if(strlen(s2) > STRLEN_COORDVALUE || cluster.count == LB_CLUSTER_SIZE)
+                return -1;
             strcpy(cluster.sval[cluster.count] + 1, s2);
             strcat(cluster.sval[cluster.count++], "\n");
 #endif
             s2 = strtok(NULL, ":");
         }
 
-        s = cluster.cmd + 3;
-        s2 = get_value(s, &params, cluster.count);
-        if(strchr(s, '\0') != s + params)
-            strcpy(cluster.param, s + params);
-        else
-            *cluster.param = '\0';
-        strcpy(s, s2);
-        cluster.s = strchr(s, '\0');
-        while(*(cluster.s - 1) == '0')
-            *(--cluster.s) = '\0';
+        if(cluster.count == 0 || *(s = cluster.cmd + 2) == '\0' || !((*s = CAPS(*s)) == 'X' || *s == 'Y'))
+            return -1;
+
+        s2 = get_value(++s, &params, cluster.count);
+        if(params == 0)
+            return -1;
+
+        strcpy(cluster.param, s + params);
+        cluster.s = strchr(strcpy(s, s2), '\0');
     }
 
     return (int32_t)cluster.count;
@@ -206,6 +207,7 @@ static inline void file_fill_buffer (void)
 
         if(parse_block() < 0) {
             cluster.count = input.length = 0;
+            grbl.report.status_message((gc_state.last_error = Status_GcodeValueOutOfRange));
             return;
         }
     }
@@ -287,6 +289,7 @@ FLASHMEM static int32_t stream_fill_buffer (void)
 
             case -1:
                 s = NULL;
+                grbl.report.status_message((gc_state.last_error = Status_GcodeValueOutOfRange));
                 return SERIAL_NO_DATA;
 
             case 0:
@@ -329,16 +332,20 @@ FLASHMEM static int32_t stream_decoder (void)
     return c;
 }
 
+FLASHMEM static void reset_data (void)
+{
+    memset(&input, 0, sizeof(input));
+    memset(&cluster, 0, offsetof(struct cluster, sval));
+}
+
 // Only respond with a single "ok" message for each cluster
 // or terminate cluster unpacking if error status reported.
 FLASHMEM static status_code_t cluster_status_message (status_code_t status_code)
 {
     if(status_code != Status_OK) {
         status_message(status_code);
-        if(cluster.next) {
-            input.s = NULL;
-            cluster.count = cluster.next = input.length = 0;
-        }
+        if(cluster.next)
+            reset_data();
     } else if(cluster.count == 0) {
         if(cluster.restore_s)
             cluster.restore_s = false;
@@ -349,11 +356,6 @@ FLASHMEM static status_code_t cluster_status_message (status_code_t status_code)
     return status_code;
 }
 
-FLASHMEM static void reset_data (void)
-{
-    memset(&input, 0, sizeof(input));
-    memset(&cluster, 0, offsetof(struct cluster, sval));
-}
 
 FLASHMEM static void stream_changed (stream_type_t type)
 {
@@ -394,7 +396,7 @@ FLASHMEM static void report_options (bool newopt)
         hal.stream.write("[CLUSTER:");
         hal.stream.write(uitoa(LB_CLUSTER_SIZE));
         hal.stream.write("]" ASCII_EOL);
-        hal.stream.write("[PLUGIN:LightBurn clusters v0.07]" ASCII_EOL);
+        hal.stream.write("[PLUGIN:LightBurn clusters v0.08]" ASCII_EOL);
     }
 
     on_report_options(newopt);
