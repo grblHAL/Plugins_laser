@@ -357,12 +357,12 @@ FLASHMEM static status_code_t cluster_status_message (status_code_t status_code)
 }
 
 
-FLASHMEM static void stream_changed (stream_type_t type)
+FLASHMEM static void stream_changed (void)
 {
     if(on_stream_changed)
-        on_stream_changed(type);
+        on_stream_changed();
 
-    if(type == StreamType_File) {
+    if(stream_is_file()) {
         file_read = hal.stream.read;
         hal.stream.read = file_decoder;
     } else if(hal.stream.read != stream_decoder) {
@@ -396,7 +396,7 @@ FLASHMEM static void report_options (bool newopt)
         hal.stream.write("[CLUSTER:");
         hal.stream.write(uitoa(LB_CLUSTER_SIZE));
         hal.stream.write("]" ASCII_EOL);
-        hal.stream.write("[PLUGIN:LightBurn clusters v0.08]" ASCII_EOL);
+        hal.stream.write("[PLUGIN:LightBurn clusters v0.09]" ASCII_EOL);
     }
 
     on_report_options(newopt);
@@ -422,7 +422,7 @@ FLASHMEM void lb_clusters_init (void)
     on_report_handlers_init = grbl.on_report_handlers_init;
     grbl.on_report_handlers_init = cluster_report;
 
-    stream_changed(hal.stream.type);
+    stream_changed();
 }
 
 #endif // LB_CLUSTERS_ENABLE
