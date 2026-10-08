@@ -30,6 +30,7 @@
 #include "grbl/hal.h"
 #include "grbl/protocol.h"
 #include "grbl/nvs_buffer.h"
+#include "grbl/ngc_params.h"
 
 typedef union {
     uint8_t value;
@@ -57,6 +58,16 @@ static io_port_cfg_t a_in, d_in;
 static on_report_options_ptr on_report_options;
 static on_realtime_report_ptr on_realtime_report;
 static coolant_ptrs_t on_coolant_changed;
+
+static float _coolant_temp (void)
+{
+    return (float)ioport_wait_on_input(Port_Analog, coolant_temp_port, WaitMode_Immediate, 0.0f) / 10.0f;
+}
+
+static float _coolant_ok (void)
+{
+    return (float)ioport_wait_on_input(Port_Digital, coolant_ok_port, WaitMode_Immediate, 0.0f);
+}
 
 static void coolant_lost_handler (uint8_t port, bool state)
 {
@@ -128,7 +139,7 @@ static void onRealtimeReport (stream_write_ptr stream_write, report_tracking_fla
 
     if(can_monitor) {
 
-        float coolant_temp = (float)ioport_wait_on_input(Port_Analog, coolant_temp_port, WaitMode_Immediate, 0.0f) / 10.0f;
+        float coolant_temp = _coolant_temp();
 
         if(coolant_temp_prev != coolant_temp || report.all) {
             strcat(buf, "|TCT:");
@@ -238,6 +249,14 @@ static void coolant_settings_load (void)
     if((coolant_temp_port == IOPORT_UNASSIGNED || a_in.claim(&a_in, &coolant_temp_port, "Coolant temperature", (pin_cap_t){})) &&
          d_in.claim(&d_in, &coolant_ok_port, "Coolant ok", (pin_cap_t){ .irq_mode = IRQ_Mode_Change })) {
 
+#if NGC_PARAMETERS_ENABLE
+
+        ngc_virtual_ro_param_add("_laser_coolant_ok", _coolant_ok);
+        if(coolant_temp_port != IOPORT_UNASSIGNED)
+            ngc_virtual_ro_param_add("_laser_coolant_temp", _coolant_temp);
+
+#endif
+
         on_realtime_report = grbl.on_realtime_report;
         grbl.on_realtime_report = onRealtimeReport;
 
@@ -251,7 +270,7 @@ static void onReportOptions (bool newopt)
     on_report_options(newopt);
 
     if(!newopt)
-        report_plugin("Laser coolant", "0.10");
+        report_plugin("Laser coolant", "0.11");
 }
 
 void laser_coolant_init (void)
